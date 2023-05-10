@@ -1,0 +1,12 @@
+src/**/*.test.ts
+jest.config.js
+tsconfig.esm.json
+.eslintrc.json
+.prettierrc
+*.log
+*.lock
+*.bak
+.DS_Store
+.nyc_output
+coverage
+.idea
