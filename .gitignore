@@ -1,9 +1,11 @@
-node_modules
-dist
+node_modules/
+dist/
+docs/
+coverage/
+
 *.log
 *.lock
 *.bak
 .DS_Store
 .nyc_output
-coverage
 .idea
