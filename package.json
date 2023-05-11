@@ -2,7 +2,7 @@
   "name": "@patrickhulce/async-utils",
   "private": false,
   "version": "0.0.0",
-  "description": "",
+  "description": "A collection of modules for working with common async tasks in node and the browser.",
   "main": "dist/cjs/index.js",
   "module": "dist/esm/index.js",
   "types": "dist/cjs/index.d.ts",
