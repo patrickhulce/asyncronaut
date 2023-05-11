@@ -6,6 +6,9 @@
   "main": "dist/cjs/index.js",
   "module": "dist/esm/index.js",
   "types": "dist/cjs/index.d.ts",
+  "engines": {
+    "node": ">=14.0.0"
+  },
   "scripts": {
     "prepublishOnly": "npm run build",
     "clean": "rm -rf dist",
@@ -27,6 +30,7 @@
   "author": "Patrick Hulce <patrick.hulce@gmail.com>",
   "license": "MIT",
   "devDependencies": {
+    "@types/debug": "^4.1.7",
     "@types/jest": "^29.5.1",
     "@typescript-eslint/eslint-plugin": "^5.59.5",
     "@typescript-eslint/parser": "^5.59.5",
@@ -40,5 +44,8 @@
     "ts-jest": "^29.1.0",
     "typedoc": "^0.24.7",
     "typescript": "^4.5.2"
+  },
+  "dependencies": {
+    "debug": "^4.3.4"
   }
 }
