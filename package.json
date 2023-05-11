@@ -15,6 +15,7 @@
     "test": "npm run test:typecheck && npm run test:unit && npm run test:lint",
     "test:typecheck": "tsc --noEmit",
     "test:unit": "jest",
+    "test:watch": "jest --watch",
     "test:lint": "eslint 'src/**/*.{js,ts}' && prettier 'src/**/*.{js,ts}' --check"
   },
   "keywords": [
