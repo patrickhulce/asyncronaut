@@ -113,6 +113,16 @@ describe(createSmoothStreamViaPoll, () => {
     expect(chunks.join('')).toEqual('Hello, World!');
   });
 
+  it('handles poll rejection', async () => {
+    const error = new Error('Polling failed!');
+    const pollFn = jest.fn().mockRejectedValue(error);
+
+    const stream = createStream({poll: pollFn});
+    const reader = stream.getReader();
+    await expect(reader.read()).rejects.toThrow(error);
+    await reader.releaseLock();
+  });
+
   it('resolves gracefully on an abort signal', async () => {
     const abortController = new AbortController();
     const pollFn = jest
@@ -169,7 +179,7 @@ describe(createSmoothStreamViaPoll, () => {
     expect(chunkPromise).toBeDone();
   });
 
-  it('streams at a custom poll interval', async () => {
+  it('respects minimumIncrementDurationMs', async () => {
     const pollFn = jest.fn().mockResolvedValueOnce({state: 'ABCD', isDone: true});
 
     const stream = createStream({
