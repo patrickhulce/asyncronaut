@@ -52,7 +52,7 @@ describe(fromWeb, () => {
     expect(receivedData).toBe(input);
   });
 
-  it.skip('handles web stream errors', async () => {
+  it('handles web stream errors', async () => {
     const webStream = new ReadableStream({
       start(controller) {
         controller.error(new Error('Test error'));
@@ -60,8 +60,8 @@ describe(fromWeb, () => {
     });
 
     try {
-      for await (const _ of fromWeb(webStream)) {
-        // Intentionally left empty
+      for await (const data of fromWeb(webStream)) {
+        expect(data).not.toBeDefined();
       }
     } catch (err) {
       expect(err).toBeInstanceOf(Error);
@@ -69,25 +69,29 @@ describe(fromWeb, () => {
     }
   });
 
-  it.skip('handles node stream destroy', async () => {
+  it('handles node stream destroy', async () => {
     const webStream = new ReadableStream({
       start(controller) {
         controller.enqueue(new TextEncoder().encode('Test data'));
       },
     });
 
-    const nodeStream = fromWeb(webStream);
-    const reader = webStream.getReader();
+    const getReaderSpy = jest.spyOn(webStream, 'getReader');
 
+    const nodeStream = fromWeb(webStream);
+
+    const reader: ReadableStreamDefaultReader<unknown> = getReaderSpy.mock.results[0].value;
     const cancelSpy = jest.spyOn(reader, 'cancel');
+
     nodeStream.destroy();
 
     try {
-      for await (const _ of nodeStream) {
-        // Intentionally left empty
+      for await (const data of nodeStream) {
+        expect(data).not.toBeDefined();
       }
     } catch (err) {
       expect(err).toBeInstanceOf(Error);
+      expect(err.message).toMatch(/asdfasdf/);
       expect(cancelSpy).toHaveBeenCalled();
     }
   });

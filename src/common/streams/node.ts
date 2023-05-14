@@ -36,9 +36,9 @@ export function fromWeb(stream: ReadableStream): Readable {
       }
     } catch (err) {
       nodeStream.emit('error', err);
-      reader.cancel();
+      await reader.cancel();
     }
-  })();
+  })().catch((err) => nodeStream.emit('error', err));
 
   return nodeStream;
 }

@@ -1,5 +1,5 @@
 import {Readable} from 'stream';
-import {ReadableStream, WritableStream} from 'stream/web';
+import {ReadableStream, TransformStream} from 'stream/web';
 import {
   CHARACTER_SMOOTH_STREAM_OPTIONS,
   SmoothStreamOptions,
@@ -50,17 +50,23 @@ describe(fromNode, () => {
     }
   });
 
-  it.skip('handles abort signal', async () => {
+  it('handles abort signal', async () => {
     const nodeStream = new Readable({
       read() {},
     });
 
     const webStream = fromNode(nodeStream);
-    const reader = webStream.getReader();
-    const inspectablePromise = withInspection(reader.closed);
 
     const abortController = new AbortController();
-    webStream.pipeTo(new WritableStream(), {signal: abortController.signal});
+    const {readable, writable} = new TransformStream();
+    const pipePromise = webStream.pipeTo(writable, {signal: abortController.signal});
+    const reader = readable.getReader();
+    const inspectablePromise = withInspection(reader.closed);
+
+    const expectationsPromise = Promise.all([
+      expect(pipePromise).rejects.toThrow('The operation was aborted'),
+      expect(inspectablePromise).rejects.toThrow('The operation was aborted'),
+    ]);
 
     const destroySpy = jest.spyOn(nodeStream, 'destroy');
     abortController.abort();
@@ -69,7 +75,7 @@ describe(fromNode, () => {
 
     expect(destroySpy).toHaveBeenCalled();
     expect(inspectablePromise).toBeDone();
-    await expect(reader.closed).rejects.toThrow();
+    await expectationsPromise;
   });
 });
 
