@@ -1,10 +1,33 @@
+import type {Readable} from 'stream';
 import {ReadableStream, TransformStream} from 'stream/web';
 import createLogger from 'debug';
 
 const log = createLogger('async-utils:streams:verbose');
 
+/** Converts a node Readable stream into a web ReadableStream */
+export function fromNode(stream: Readable): ReadableStream {
+  return new ReadableStream({
+    start(controller) {
+      stream.on('data', (chunk) => {
+        controller.enqueue(chunk);
+      });
+
+      stream.on('end', () => {
+        controller.close();
+      });
+
+      stream.on('error', (err) => {
+        controller.error(err);
+      });
+    },
+    cancel(reason) {
+      stream.destroy(reason);
+    },
+  });
+}
+
 /** Converts a web ReadableStream of items into a promise of an array of items. */
-export function streamToDecomposedChunks<T>(stream: ReadableStream<T>): {
+export function toDecomposedChunks<T>(stream: ReadableStream<T>): {
   result: Promise<Array<T>>;
   chunks: Array<T>;
 } {

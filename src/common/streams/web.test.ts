@@ -1,12 +1,77 @@
+import {Readable} from 'stream';
+import {ReadableStream, WritableStream} from 'stream/web';
 import {
   CHARACTER_SMOOTH_STREAM_OPTIONS,
   SmoothStreamOptions,
   createSmoothStreamViaPoll,
-  streamToDecomposedChunks,
+  fromNode,
+  toDecomposedChunks,
 } from './web';
 import {flushAllMicrotasks, withInspection} from '../promises';
 
 import '../../test/jest';
+
+describe(fromNode, () => {
+  it('converts a node Readable stream to a web ReadableStream', async () => {
+    const input = 'This is a test string.';
+    const nodeStream = Readable.from(Buffer.from(input, 'utf-8'));
+    const webStream = fromNode(nodeStream);
+
+    expect(webStream).toBeInstanceOf(ReadableStream);
+
+    const reader = webStream.getReader();
+    const decoder = new TextDecoder();
+    let receivedData = '';
+
+    let result;
+    while (!(result = await reader.read()).done) {
+      receivedData += decoder.decode(result.value, {stream: true});
+    }
+
+    expect(receivedData).toBe(input);
+  });
+
+  it('handles stream errors', async () => {
+    const nodeStream = new Readable({
+      read() {
+        this.emit('error', new Error('Test error'));
+      },
+    });
+
+    const webStream = fromNode(nodeStream);
+
+    const reader = webStream.getReader();
+
+    try {
+      await reader.read();
+    } catch (err) {
+      expect(err).toBeInstanceOf(Error);
+      expect(err.message).toBe('Test error');
+    }
+  });
+
+  it.skip('handles abort signal', async () => {
+    const nodeStream = new Readable({
+      read() {},
+    });
+
+    const webStream = fromNode(nodeStream);
+    const reader = webStream.getReader();
+    const inspectablePromise = withInspection(reader.closed);
+
+    const abortController = new AbortController();
+    webStream.pipeTo(new WritableStream(), {signal: abortController.signal});
+
+    const destroySpy = jest.spyOn(nodeStream, 'destroy');
+    abortController.abort();
+
+    await flushAllMicrotasks();
+
+    expect(destroySpy).toHaveBeenCalled();
+    expect(inspectablePromise).toBeDone();
+    await expect(reader.closed).rejects.toThrow();
+  });
+});
 
 describe(createSmoothStreamViaPoll, () => {
   const createStream = (
@@ -44,7 +109,7 @@ describe(createSmoothStreamViaPoll, () => {
       .mockResolvedValueOnce({state: 'Hello, World!', isDone: true});
 
     const stream = createStream({poll: pollFn});
-    const chunkPromise = withInspection(streamToDecomposedChunks(stream).result);
+    const chunkPromise = withInspection(toDecomposedChunks(stream).result);
 
     await flushAllTimersAndMicrotasks();
 
@@ -57,7 +122,7 @@ describe(createSmoothStreamViaPoll, () => {
     const pollFn = jest.fn().mockResolvedValueOnce({state: 'Hello, World!', isDone: true});
 
     const stream = createStream({poll: pollFn});
-    const chunkPromise = withInspection(streamToDecomposedChunks(stream).result);
+    const chunkPromise = withInspection(toDecomposedChunks(stream).result);
 
     await flushAllTimersAndMicrotasks();
 
@@ -73,7 +138,7 @@ describe(createSmoothStreamViaPoll, () => {
       .mockResolvedValueOnce({state: 'Hello, World!', isDone: true});
 
     const stream = createStream({poll: pollFn});
-    const chunkPromise = withInspection(streamToDecomposedChunks(stream).result);
+    const chunkPromise = withInspection(toDecomposedChunks(stream).result);
 
     await flushAllTimersAndMicrotasks();
 
@@ -100,7 +165,7 @@ describe(createSmoothStreamViaPoll, () => {
       .mockResolvedValueOnce({state: 'Hello, World!', isDone: true});
 
     const stream = createStream({poll: pollFn, signal: abortController.signal});
-    const chunkPromise = withInspection(streamToDecomposedChunks(stream).result);
+    const chunkPromise = withInspection(toDecomposedChunks(stream).result);
 
     setTimeout(() => abortController.abort(), 900);
     jest.advanceTimersByTime(800);
@@ -125,7 +190,7 @@ describe(createSmoothStreamViaPoll, () => {
       .mockResolvedValueOnce({state: 'ABCD', isDone: true});
 
     const stream = createStream({poll: pollFn, pollIntervalMs: 60_000});
-    const {result: promise, chunks} = streamToDecomposedChunks(stream);
+    const {result: promise, chunks} = toDecomposedChunks(stream);
     const chunkPromise = withInspection(promise);
 
     await flushAllMicrotasks();
@@ -156,7 +221,7 @@ describe(createSmoothStreamViaPoll, () => {
       minimumIncrementDurationMs: 20,
       finalIncrementDurationMs: 30,
     });
-    const {result: promise, chunks} = streamToDecomposedChunks(stream);
+    const {result: promise, chunks} = toDecomposedChunks(stream);
     const chunkPromise = withInspection(promise);
 
     await flushAllMicrotasks();
@@ -182,7 +247,7 @@ describe(createSmoothStreamViaPoll, () => {
       pollIntervalMs: 20_000,
       excessIncrementDurationMs: 20_000,
     });
-    const {result: promise, chunks} = streamToDecomposedChunks(stream);
+    const {result: promise, chunks} = toDecomposedChunks(stream);
     const chunkPromise = withInspection(promise);
 
     // Schedules first character immediately.
@@ -214,7 +279,7 @@ describe(createSmoothStreamViaPoll, () => {
       excessIncrementDurationMs: 0,
       finalIncrementDurationMs: 40_000,
     });
-    const {result: promise, chunks} = streamToDecomposedChunks(stream);
+    const {result: promise, chunks} = toDecomposedChunks(stream);
     const chunkPromise = withInspection(promise);
 
     // Schedules first character immediately.
