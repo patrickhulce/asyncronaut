@@ -160,7 +160,7 @@ describe(withTimeout, () => {
     const cleanupOnResolve = jest.fn();
     const result = withTimeout(sourcePromise, {
       timeoutMs: 100,
-      cleanupOnResolve,
+      cleanupOnLateResolve: cleanupOnResolve,
     });
 
     jest.advanceTimersByTime(201);
@@ -174,7 +174,7 @@ describe(withTimeout, () => {
     const cleanupOnReject = jest.fn();
     const result = withTimeout(sourcePromise, {
       timeoutMs: 100,
-      cleanupOnReject,
+      cleanupOnLateReject: cleanupOnReject,
     });
 
     jest.advanceTimersByTime(201);
@@ -188,7 +188,7 @@ describe(withTimeout, () => {
     const cleanupOnReject = jest.fn();
     const result = withTimeout(sourcePromise, {
       timeoutMs: 100,
-      cleanupOnReject,
+      cleanupOnLateReject: cleanupOnReject,
     });
 
     jest.advanceTimersByTime(201);
@@ -206,7 +206,7 @@ describe(withTimeout, () => {
     const cleanupOnResolve = jest.fn();
     const result = withTimeout(sourcePromise, {
       timeoutMs: 100,
-      cleanupOnResolve,
+      cleanupOnLateResolve: cleanupOnResolve,
     });
 
     jest.advanceTimersByTime(51);
@@ -221,7 +221,7 @@ describe(withTimeout, () => {
     const cleanupOnReject = jest.fn();
     const result = withTimeout(sourcePromise, {
       timeoutMs: 100,
-      cleanupOnReject,
+      cleanupOnLateReject: cleanupOnReject,
     });
 
     jest.advanceTimersByTime(51);

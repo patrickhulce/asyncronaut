@@ -205,7 +205,7 @@ export class ConcurrentResourcePool<TResource> {
       resourceRef: withTimeout(this._options.create(), {
         timeoutMs: this._options.createTimeoutMs,
         timeoutErrorMessage: `Failed to create resource in specified timeout`,
-        cleanupOnResolve: (resource: TResource) => {
+        cleanupOnLateResolve: (resource: TResource) => {
           log(`create resource #${id} timed out, but eventually resolved, destroying`);
           resourceRecord.resourceRef = Promise.resolve(resource);
           this._destroyResource(resourceRecord);

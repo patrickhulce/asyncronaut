@@ -30,9 +30,9 @@ export interface PromiseTimeoutOptions<T> {
   /** The abort controller to both listen for changes to abort early, and to invoke abort when timeout is reached. */
   abortController?: AbortController;
   /** The function to invoke if the promise eventually resolves with a value. */
-  cleanupOnResolve?(value: T): void;
+  cleanupOnLateResolve?(value: T): void;
   /** The function to invoke if the promise eventually rejects with a value. */
-  cleanupOnReject?(error: Error): void;
+  cleanupOnLateReject?(error: Error): void;
 }
 
 /** Creates the a promise with resolve and reject methods exposed. */
@@ -85,7 +85,7 @@ export function withTimeout<T>(
       resolve(value);
       clearTimeout(timeout);
 
-      if (hasCancelled && options.cleanupOnResolve) options.cleanupOnResolve(value);
+      if (hasCancelled && options.cleanupOnLateResolve) options.cleanupOnLateResolve(value);
     })
     .catch((rejection) => {
       reject(rejection);
@@ -93,7 +93,7 @@ export function withTimeout<T>(
       const error =
         rejection instanceof Error ? rejection : new TimeoutSourceLateRejectionError(rejection);
 
-      if (hasCancelled && options.cleanupOnReject) options.cleanupOnReject(error);
+      if (hasCancelled && options.cleanupOnLateReject) options.cleanupOnLateReject(error);
     });
 
   return promise;
