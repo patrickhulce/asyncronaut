@@ -1,5 +1,9 @@
 export class TimeoutError extends Error {}
-export class AbortError extends Error {}
+export class AbortError extends Error {
+  constructor(message: string, public reason: unknown) {
+    super(message);
+  }
+}
 export class TimeoutSourceLateRejectionError extends Error {
   constructor(public originalRejection: unknown) {
     super();
@@ -71,12 +75,13 @@ export function withTimeout<T>(
   }, options.timeoutMs);
 
   if (options.abortController) {
-    options.abortController.signal.addEventListener('abort', () => {
+    const signal = options.abortController.signal;
+    signal.addEventListener('abort', () => {
       if (hasCancelled) return;
 
       hasCancelled = true;
       const errorMessage = options.abortErrorMessage || `Operation aborted`;
-      reject(new AbortError(errorMessage));
+      reject(new AbortError(errorMessage, signal.reason));
     });
   }
 
