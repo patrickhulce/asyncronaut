@@ -108,9 +108,15 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
     // Handle removal from the queue when task is aborted.
     // All other flows go through the `withTimeout` handling in `_process`
     abortController.signal.addEventListener('abort', () => {
-      if (taskRef.state !== TaskState.NOT_STARTED) return;
-      this._tasksQueued = this._tasksQueued.filter((ref) => ref !== taskRef);
+      if (taskRef.state !== TaskState.QUEUED) return;
+
+      this._tasks[TaskState.CANCELLED].push(taskRef);
+      this._tasks[TaskState.QUEUED] = this._tasks[TaskState.QUEUED].filter(
+        (ref) => ref !== taskRef
+      );
       taskRef.state = TaskState.CANCELLED;
+      taskRef.error = new TaskFailureError(taskRef, abortController.signal.reason);
+      taskRef.completionPromiseDecomposed.resolve();
     });
 
     this._tasks[TaskState.QUEUED].push(taskRef);
