@@ -10,7 +10,7 @@ function onTaskMock(
     return async (taskRef) => {
       // eslint-disable-next-line no-constant-condition
       while (true) {
-        taskRef.abortController.signal.throwIfAborted();
+        taskRef.signal.throwIfAborted();
         await waitMs(100);
       }
     };
@@ -43,7 +43,8 @@ describe(TaskQueue, () => {
         state: TaskState.QUEUED,
         request: {input: 1},
         completed: expect.any(Promise),
-        abortController: expect.any(AbortController),
+        signal: expect.anything(),
+        abort: expect.anything(),
       });
     });
 
@@ -141,7 +142,7 @@ describe(TaskQueue, () => {
       const taskRef2 = taskQueue.enqueue(2);
       const taskRef3 = taskQueue.enqueue(2);
 
-      taskRef2.abortController.abort();
+      taskRef2.abort();
       await flushAllMicrotasks();
 
       expect(taskRef2.state).toEqual(TaskState.CANCELLED);
@@ -162,7 +163,7 @@ describe(TaskQueue, () => {
       const completedPromise = withInspection(taskRef.completed);
 
       await flushAllMicrotasks();
-      taskRef.abortController.abort();
+      taskRef.abort();
       await flushAllMicrotasks();
 
       expect(completedPromise).toBeDone();
@@ -191,7 +192,7 @@ describe(TaskQueue, () => {
       const completedPromise = withInspection(taskRef.completed);
 
       await flushAllMicrotasks();
-      taskRef.abortController.abort();
+      taskRef.abort();
       await flushAllMicrotasks();
 
       expect(completedPromise).toBeDone();
@@ -254,7 +255,7 @@ describe(TaskQueue, () => {
       taskQueue.start();
 
       const taskRef = taskQueue.enqueue(1);
-      taskRef.abortController.abort();
+      taskRef.abort();
       await flushAllMicrotasks();
 
       expect(taskRef.state).toEqual(TaskState.FAILED);
@@ -357,9 +358,9 @@ describe(TaskQueue, () => {
       taskQueue.start();
 
       const taskRef = taskQueue.enqueue(1);
-      const abortFn = jest.spyOn(taskRef.abortController, 'abort');
+      const abortFn = jest.spyOn(taskRef, 'abort');
       const signalPromise = withInspection(
-        new Promise((resolve) => taskRef.abortController.signal.addEventListener('abort', resolve))
+        new Promise((resolve) => taskRef.signal.addEventListener('abort', resolve))
       );
       const drainPromise = withInspection(taskQueue.drain());
 
@@ -416,7 +417,7 @@ describe(TaskQueue, () => {
 
     const taskRef = taskQueue.enqueue(1);
     const completedPromise = withInspection(taskRef.completed);
-    taskRef.abortController.abort();
+    taskRef.abort();
 
     await flushAllMicrotasks();
 

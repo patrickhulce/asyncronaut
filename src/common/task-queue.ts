@@ -7,13 +7,22 @@ export interface QueueOptions<TInput, TOutput> {
 }
 
 export interface TaskRef<TInput, TOutput> {
+  /** A unique identifier for the task. */
   id: string;
+  /** The current state of this task in the execution lifecycle. */
   state: TaskState;
+  /** The options used when requesting the task, including input arguments. */
   request: TaskRequest<TInput>;
+  /** The task's result, only set when the task has completed successfully. */
   output: TOutput | undefined;
+  /** The task failure error with which the task was rejected, only set when the task has completed unsuccessfully. */
   error: TaskFailureError | undefined;
+  /** A promise representing when the task has settled (either resolved or rejected). */
   completed: Promise<void>;
-  abortController: AbortController;
+  /** A signal communicating the requested cancellation of this task. */
+  signal: AbortSignal;
+  /** A function that aborts the task's execution. */
+  abort(reason?: unknown): void;
 }
 
 export interface TaskOptions {
@@ -40,7 +49,8 @@ interface TaskRequest<TInput> extends TaskOptions {
 }
 
 interface InternalTaskRef<TInput, TOutput> extends TaskRef<TInput, TOutput> {
-  completionPromiseDecomposed: DecomposedPromise<void>;
+  /** The underlying decomposed promise for the `completed` property. */
+  completedPromiseDecomposed: DecomposedPromise<void>;
 }
 
 function uuid() {
@@ -88,7 +98,7 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
       throw new Error(`Cannot enqueue tasks to drained queue`);
     }
 
-    const completionPromiseDecomposed = createDecomposedPromise<void>();
+    const completedPromiseDecomposed = createDecomposedPromise<void>();
     const abortController = new AbortController();
 
     const signal = options?.signal;
@@ -100,9 +110,10 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
       request: {input, ...options},
       output: undefined,
       error: undefined,
-      completed: completionPromiseDecomposed.promise,
-      completionPromiseDecomposed,
-      abortController,
+      completed: completedPromiseDecomposed.promise,
+      completedPromiseDecomposed,
+      signal: abortController.signal,
+      abort: abortController.abort.bind(abortController),
     };
 
     // Handle removal from the queue when task is aborted.
@@ -116,7 +127,7 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
       );
       taskRef.state = TaskState.CANCELLED;
       taskRef.error = new TaskFailureError(taskRef, abortController.signal.reason);
-      taskRef.completionPromiseDecomposed.resolve();
+      taskRef.completedPromiseDecomposed.resolve();
     });
 
     this._tasks[TaskState.QUEUED].push(taskRef);
@@ -150,8 +161,8 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
     const taskCompletionPromise = this.waitForCompletion();
 
     const error = new Error('Task queue drained');
-    for (const taskRef of this._tasks[TaskState.QUEUED]) taskRef.abortController.abort(error);
-    for (const taskRef of this._tasks[TaskState.ACTIVE]) taskRef.abortController.abort(error);
+    for (const taskRef of this._tasks[TaskState.QUEUED]) taskRef.abort(error);
+    for (const taskRef of this._tasks[TaskState.ACTIVE]) taskRef.abort(error);
 
     await taskCompletionPromise;
     this._state = QueueState.DRAINED;
@@ -190,7 +201,7 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
     this._tasks[TaskState.ACTIVE].push(taskRef);
     await withTimeout(this._options.onTask(taskRef), {
       timeoutMs: 60_000,
-      abortController: taskRef.abortController,
+      abortController: taskRef,
     })
       .then((result) => this._processTaskSuccess(taskRef, result))
       .catch((error) => this._processTaskFailure(taskRef, error));
@@ -206,7 +217,7 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
     taskRef.state = TaskState.SUCCEEDED;
     taskRef.output = result;
 
-    taskRef.completionPromiseDecomposed.resolve();
+    taskRef.completedPromiseDecomposed.resolve();
   }
 
   private _processTaskFailure(taskRef: InternalTaskRef<TInput, TOutput>, originalError: unknown) {
@@ -218,6 +229,6 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
     taskRef.error = error;
     this.emit('error', error);
 
-    taskRef.completionPromiseDecomposed.resolve();
+    taskRef.completedPromiseDecomposed.resolve();
   }
 }
