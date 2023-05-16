@@ -10,6 +10,10 @@ export class TimeoutSourceLateRejectionError extends Error {
   }
 }
 
+export function waitMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export interface InspectablePromise<T> extends Promise<T> {
   isDone(): boolean;
   getDebugValues(): {resolvedValue: unknown; rejectionError: Error | undefined};
@@ -169,7 +173,7 @@ export function withInspection<T>(promise: Promise<T>): InspectablePromise<T> {
       return hasSettled;
     },
     getDebugValues() {
-      return {resolvedValue, rejectionError};
+      return {hasSettled, resolvedValue, rejectionError};
     },
   });
 }
