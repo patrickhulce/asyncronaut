@@ -30,13 +30,16 @@ expect.extend({
    * @returns The jest expectation result.
    */
   toBeDone(received: InspectablePromise<unknown>, failureMessage: unknown) {
-    const pass: boolean = this.isNot ? !received.isDone() : received.isDone();
-    const toBe = this.isNot ? 'not to be' : 'to be';
+    // Despite it's name, this is not whether the assertion is passing when `.not` is considered.
+    // Rather, it's just whether the regular assertion should pass.
+    const pass = received.isDone();
+    const toBe: string = this.isNot ? 'not to be' : 'to be';
+    const expected: string = failureMessage ? this.utils.printExpected(failureMessage) : '';
 
     const message = () =>
       [
         `${this.utils.matcherHint('.toBeDone', undefined, this.isNot ? 'false' : 'true')}\n`,
-        `Expected promise ${toBe} settled: ${this.utils.printExpected(failureMessage)}`,
+        `Expected promise ${toBe} settled: ${expected}`,
         `  ${this.utils.printReceived(received.getDebugValues())}`,
       ].join('\n');
 

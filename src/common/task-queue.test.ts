@@ -89,7 +89,7 @@ describe(TaskQueue, () => {
 
       const taskRef1 = taskQueue.enqueue(1);
       const taskRef2 = taskQueue.enqueue(2);
-      const completedPromise = withInspection(taskRef1.completed);
+      const completedPromise = withInspection(taskRef2.completed);
 
       await flushAllMicrotasks();
 
@@ -116,7 +116,7 @@ describe(TaskQueue, () => {
 
       const taskRef1 = taskQueue.enqueue(1);
       const taskRef2 = taskQueue.enqueue(2);
-      const completedPromise = withInspection(taskRef1.completed);
+      const completedPromise = withInspection(taskRef2.completed);
 
       await flushAllMicrotasks();
 
