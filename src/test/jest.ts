@@ -30,12 +30,13 @@ expect.extend({
    * @returns The jest expectation result.
    */
   toBeDone(received: InspectablePromise<unknown>, failureMessage: unknown) {
-    const pass = received.isDone();
+    const pass: boolean = this.isNot ? !received.isDone() : received.isDone();
+    const toBe = this.isNot ? 'not to be' : 'to be';
 
     const message = () =>
       [
-        `${this.utils.matcherHint('.toBeDone')}\n`,
-        `Expected promise to be settled: ${this.utils.printExpected(failureMessage)}`,
+        `${this.utils.matcherHint('.toBeDone', undefined, this.isNot ? 'false' : 'true')}\n`,
+        `Expected promise ${toBe} settled: ${this.utils.printExpected(failureMessage)}`,
         `  ${this.utils.printReceived(received.getDebugValues())}`,
       ].join('\n');
 
