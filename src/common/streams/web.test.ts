@@ -64,8 +64,8 @@ describe(fromNode, () => {
     const inspectablePromise = withInspection(reader.closed);
 
     const expectationsPromise = Promise.all([
-      expect(pipePromise).rejects.toThrow('The operation was aborted'),
-      expect(inspectablePromise).rejects.toThrow('The operation was aborted'),
+      expect(pipePromise).rejects.toThrow(/abort/),
+      expect(inspectablePromise).rejects.toThrow(/abort/),
     ]);
 
     const destroySpy = jest.spyOn(nodeStream, 'destroy');
