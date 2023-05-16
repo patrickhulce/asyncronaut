@@ -2,7 +2,7 @@ import {ActionOptions, GenericPoolDiagnostics, Pool} from './types';
 import {withTimeout, createDecomposedPromise, DecomposedPromise} from './promises';
 import createLogger from 'debug';
 
-const log = createLogger('async-utils:concurrent-pool:verbose');
+const log = createLogger('asyncronaut:concurrent-pool:verbose');
 
 /**
  * @fileoverview

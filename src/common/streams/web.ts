@@ -2,7 +2,7 @@ import type {Readable} from 'stream';
 import {ReadableStream, TransformStream} from 'stream/web';
 import createLogger from 'debug';
 
-const log = createLogger('async-utils:streams:verbose');
+const log = createLogger('asyncronaut:streams:verbose');
 
 /** Converts a node Readable stream into a web ReadableStream */
 export function fromNode(stream: Readable): ReadableStream {

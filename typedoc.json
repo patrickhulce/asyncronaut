@@ -1,6 +1,6 @@
 {
   "out": "docs",
-  "name": "@patrickhulce/async-utils",
+  "name": "asyncronaut",
   "exclude": ["**/*.test.ts"],
   "excludeExternals": true,
   "excludePrivate": true,
