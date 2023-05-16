@@ -28,10 +28,10 @@ export enum QueueState {
 }
 
 export enum TaskState {
-  NOT_STARTED = 'not-started',
-  IN_PROGRESS = 'in-progress',
+  QUEUED = 'queued',
+  ACTIVE = 'active',
   CANCELLED = 'cancelled',
-  COMPLETED = 'completed',
+  SUCCEEDED = 'succeeded',
   FAILED = 'failed',
 }
 
@@ -64,9 +64,13 @@ export class TaskFailureError extends Error {
 export class TaskQueue<TInput, TOutput> extends EventEmitter {
   private _state = QueueState.PAUSED;
   private _options: QueueOptions<TInput, TOutput>;
-  private _tasksQueued: Array<InternalTaskRef<TInput, TOutput>> = [];
-  private _tasksInProgress: Array<InternalTaskRef<TInput, TOutput>> = [];
-  private _tasksCompleted: Array<InternalTaskRef<TInput, TOutput>> = [];
+  private _tasks: Record<TaskState, Array<InternalTaskRef<TInput, TOutput>>> = {
+    [TaskState.QUEUED]: [],
+    [TaskState.ACTIVE]: [],
+    [TaskState.CANCELLED]: [],
+    [TaskState.FAILED]: [],
+    [TaskState.SUCCEEDED]: [],
+  };
 
   constructor(options?: Partial<QueueOptions<TInput, TOutput>>) {
     super();
@@ -92,7 +96,7 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
 
     const taskRef: InternalTaskRef<TInput, TOutput> = {
       id: uuid(),
-      state: TaskState.NOT_STARTED,
+      state: TaskState.QUEUED,
       request: {input, ...options},
       output: undefined,
       error: undefined,
@@ -109,7 +113,7 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
       taskRef.state = TaskState.CANCELLED;
     });
 
-    this._tasksQueued.push(taskRef);
+    this._tasks[TaskState.QUEUED].push(taskRef);
     this._startNextIfPossible();
     return taskRef;
   }
@@ -140,8 +144,8 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
     const taskCompletionPromise = this.waitForCompletion();
 
     const error = new Error('Task queue drained');
-    for (const taskRef of this._tasksQueued) taskRef.abortController.abort(error);
-    for (const taskRef of this._tasksInProgress) taskRef.abortController.abort(error);
+    for (const taskRef of this._tasks[TaskState.QUEUED]) taskRef.abortController.abort(error);
+    for (const taskRef of this._tasks[TaskState.ACTIVE]) taskRef.abortController.abort(error);
 
     await taskCompletionPromise;
     this._state = QueueState.DRAINED;
@@ -149,33 +153,35 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
 
   async waitForCompletion(): Promise<void> {
     await this._getPromiseOfAllTasks();
-    if (this._tasksQueued.length || this._tasksInProgress.length) return this.waitForCompletion();
+    if (this._tasks[TaskState.QUEUED].length || this._tasks[TaskState.ACTIVE].length) {
+      return this.waitForCompletion();
+    }
   }
 
   private async _getPromiseOfAllTasks(): Promise<void> {
-    const queuedPromises = this._tasksQueued.map((ref) => ref.completed);
-    const inProgressPromises = this._tasksInProgress.map((ref) => ref.completed);
-    await Promise.all([...queuedPromises, ...inProgressPromises]);
+    const queuedPromises = this._tasks[TaskState.QUEUED].map((ref) => ref.completed);
+    const activePromises = this._tasks[TaskState.ACTIVE].map((ref) => ref.completed);
+    await Promise.all([...queuedPromises, ...activePromises]);
   }
 
   private _startNextIfPossible() {
     if (this._state !== QueueState.RUNNING) return;
-    if (this._tasksInProgress.length >= this._options.maxConcurrentTasks) return;
-    if (!this._tasksQueued.length) return;
+    if (this._tasks[TaskState.ACTIVE].length >= this._options.maxConcurrentTasks) return;
+    if (!this._tasks[TaskState.QUEUED].length) return;
 
     this._processNext();
   }
 
   private _processNext() {
-    const taskRef = this._tasksQueued.shift();
+    const taskRef = this._tasks[TaskState.QUEUED].shift();
     if (!taskRef) throw new Error('No task queued');
 
     this._process(taskRef).catch((error) => this.emit('error', error));
   }
 
   private async _process(taskRef: InternalTaskRef<TInput, TOutput>): Promise<void> {
-    taskRef.state = TaskState.IN_PROGRESS;
-    this._tasksInProgress.push(taskRef);
+    taskRef.state = TaskState.ACTIVE;
+    this._tasks[TaskState.ACTIVE].push(taskRef);
     await withTimeout(this._options.onTask(taskRef), {
       timeoutMs: 60_000,
       abortController: taskRef.abortController,
@@ -183,15 +189,15 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
       .then((result) => this._processTaskSuccess(taskRef, result))
       .catch((error) => this._processTaskFailure(taskRef, error));
 
-    this._tasksCompleted.push(taskRef);
-    this._tasksInProgress = this._tasksInProgress.filter((ref) => ref !== taskRef);
+    this._tasks[TaskState.ACTIVE] = this._tasks[TaskState.ACTIVE].filter((ref) => ref !== taskRef);
+    this._tasks[taskRef.state].push(taskRef);
     this._startNextIfPossible();
   }
 
   private _processTaskSuccess(taskRef: InternalTaskRef<TInput, TOutput>, result: TOutput) {
-    if (taskRef.state !== TaskState.IN_PROGRESS) return;
+    if (taskRef.state !== TaskState.ACTIVE) return;
 
-    taskRef.state = TaskState.COMPLETED;
+    taskRef.state = TaskState.SUCCEEDED;
     taskRef.output = result;
 
     taskRef.completionPromiseDecomposed.resolve();
@@ -199,10 +205,10 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
 
   private _processTaskFailure(taskRef: InternalTaskRef<TInput, TOutput>, originalError: unknown) {
     if (originalError instanceof TaskFailureError) return;
-    if (taskRef.state !== TaskState.IN_PROGRESS) return;
+    if (taskRef.state !== TaskState.ACTIVE) return;
 
-    taskRef.state = TaskState.FAILED;
     const error = new TaskFailureError(taskRef, originalError);
+    taskRef.state = TaskState.FAILED;
     taskRef.error = error;
     this.emit('error', error);
 
