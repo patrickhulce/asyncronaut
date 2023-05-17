@@ -1,18 +1,20 @@
 import {EventEmitter} from 'events';
 import {DecomposedPromise, createDecomposedPromise, withTimeout} from './promises';
 
-export interface QueueOptions<TInput, TOutput> {
+export interface QueueOptions<TInput, TOutput, TProgress> {
   /** The maximum number of tasks that can be active at once, defaults to 1. */
   maxConcurrentTasks: number;
   /** The maximum number of completed tasks that should be saved for diagnostic purposes, defaults to 100. */
   maxCompletedTaskMemory: number;
   /** The function to process tasks in the queue. */
-  onTask(ref: Pick<TaskRef<TInput, TOutput>, 'id' | 'request' | 'signal'>): Promise<TOutput>;
+  onTask(
+    ref: Pick<TaskRef<TInput, TOutput, TProgress>, 'id' | 'request' | 'signal' | 'emit'>
+  ): Promise<TOutput>;
   /** The function to use to acquire the current UNIX timestamp. */
   dateNow(): number;
 }
 
-export interface TaskRef<TInput, TOutput> {
+export interface TaskRef<TInput, TOutput, TProgress = ProgressUpdate> {
   /** A unique identifier for the task. */
   id: string;
   /** The current state of this task in the execution lifecycle. */
@@ -33,6 +35,12 @@ export interface TaskRef<TInput, TOutput> {
   signal: AbortSignal;
   /** A function that aborts the task's execution. */
   abort(reason?: unknown): void;
+  /** A function that emits progress events to consumers. */
+  emit(name: 'progress', event: TProgress): void;
+  /** A function that adds an event listener for progress events. */
+  on(name: 'progress', listener: (event: TProgress) => void): void;
+  /** A function that removes an event listener for progress events. */
+  off(name: 'progress', listener: (event: TProgress) => void): void;
 }
 
 export interface TaskOptions {
@@ -54,16 +62,16 @@ export enum TaskState {
   FAILED = 'failed',
 }
 
-export interface QueueDiagnostics<TInput, TOutput> {
+export interface QueueDiagnostics<TInput, TOutput, TProgress> {
   state: QueueState;
-  tasks: Record<TaskState, Array<TaskRef<TInput, TOutput>>>;
+  tasks: Record<TaskState, Array<TaskRef<TInput, TOutput, TProgress>>>;
 }
 
 interface TaskRequest<TInput> extends TaskOptions {
   input: TInput;
 }
 
-interface InternalTaskRef<TInput, TOutput> extends TaskRef<TInput, TOutput> {
+interface InternalTaskRef<TInput, TOutput, TProgress> extends TaskRef<TInput, TOutput, TProgress> {
   /** The underlying decomposed promise for the `completed` property. */
   completedPromiseDecomposed: DecomposedPromise<void>;
 }
@@ -75,7 +83,7 @@ function uuid() {
 }
 
 export class TaskFailureError extends Error {
-  constructor(public taskRef: TaskRef<unknown, unknown>, public reason: unknown) {
+  constructor(public taskRef: TaskRef<unknown, unknown, unknown>, public reason: unknown) {
     super();
 
     this.taskRef = {...this.taskRef, error: undefined};
@@ -86,10 +94,15 @@ export class TaskFailureError extends Error {
   }
 }
 
-export class TaskQueue<TInput, TOutput> extends EventEmitter {
+export interface ProgressUpdate {
+  completedItems: number;
+  totalItems: number;
+}
+
+export class TaskQueue<TInput, TOutput, TProgress = ProgressUpdate> extends EventEmitter {
   private _state = QueueState.PAUSED;
-  private _options: QueueOptions<TInput, TOutput>;
-  private _tasks: Record<TaskState, Array<InternalTaskRef<TInput, TOutput>>> = {
+  private _options: QueueOptions<TInput, TOutput, TProgress>;
+  private _tasks: Record<TaskState, Array<InternalTaskRef<TInput, TOutput, TProgress>>> = {
     [TaskState.QUEUED]: [],
     [TaskState.ACTIVE]: [],
     [TaskState.CANCELLED]: [],
@@ -97,7 +110,7 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
     [TaskState.SUCCEEDED]: [],
   };
 
-  constructor(options?: Partial<QueueOptions<TInput, TOutput>>) {
+  constructor(options?: Partial<QueueOptions<TInput, TOutput, TProgress>>) {
     super();
     this._options = {
       maxConcurrentTasks: 1,
@@ -110,18 +123,19 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
     };
   }
 
-  enqueue(input: TInput, options?: TaskOptions): TaskRef<TInput, TOutput> {
+  enqueue(input: TInput, options?: TaskOptions): TaskRef<TInput, TOutput, TProgress> {
     if (this._state === QueueState.DRAINING || this._state === QueueState.DRAINED) {
       throw new Error(`Cannot enqueue tasks to drained queue`);
     }
 
     const completedPromiseDecomposed = createDecomposedPromise<void>();
     const abortController = new AbortController();
+    const eventEmitter = new EventEmitter();
 
     const signal = options?.signal;
     if (signal) signal.addEventListener('abort', () => abortController.abort(signal.reason));
 
-    const taskRef: InternalTaskRef<TInput, TOutput> = {
+    const taskRef: InternalTaskRef<TInput, TOutput, TProgress> = {
       id: uuid(),
       state: TaskState.QUEUED,
       request: {input, ...options},
@@ -133,6 +147,9 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
       completedPromiseDecomposed,
       signal: abortController.signal,
       abort: abortController.abort.bind(abortController),
+      emit: eventEmitter.emit.bind(eventEmitter),
+      on: eventEmitter.on.bind(eventEmitter),
+      off: eventEmitter.off.bind(eventEmitter),
     };
 
     // Handle removal from the queue when task is aborted.
@@ -186,7 +203,7 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
     }
   }
 
-  getDiagnostics(): QueueDiagnostics<TInput, TOutput> {
+  getDiagnostics(): QueueDiagnostics<TInput, TOutput, TProgress> {
     return {
       state: this._state,
       tasks: {
@@ -234,7 +251,7 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
     this._process(taskRef).catch((error) => this.emit('error', error));
   }
 
-  private async _process(taskRef: InternalTaskRef<TInput, TOutput>): Promise<void> {
+  private async _process(taskRef: InternalTaskRef<TInput, TOutput, TProgress>): Promise<void> {
     taskRef.state = TaskState.ACTIVE;
     this._tasks[TaskState.ACTIVE].push(taskRef);
     await withTimeout(this._options.onTask(taskRef), {
@@ -247,7 +264,7 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
     this._startNextIfPossible();
   }
 
-  private _processTaskCancellation(taskRef: InternalTaskRef<TInput, TOutput>) {
+  private _processTaskCancellation(taskRef: InternalTaskRef<TInput, TOutput, TProgress>) {
     if (taskRef.state !== TaskState.QUEUED) return;
 
     taskRef.state = TaskState.CANCELLED;
@@ -261,7 +278,10 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
     taskRef.completedPromiseDecomposed.resolve();
   }
 
-  private _processTaskSuccess(taskRef: InternalTaskRef<TInput, TOutput>, result: TOutput) {
+  private _processTaskSuccess(
+    taskRef: InternalTaskRef<TInput, TOutput, TProgress>,
+    result: TOutput
+  ) {
     if (taskRef.state !== TaskState.ACTIVE) return;
 
     taskRef.state = TaskState.SUCCEEDED;
@@ -275,7 +295,10 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
     taskRef.completedPromiseDecomposed.resolve();
   }
 
-  private _processTaskFailure(taskRef: InternalTaskRef<TInput, TOutput>, originalError: unknown) {
+  private _processTaskFailure(
+    taskRef: InternalTaskRef<TInput, TOutput, TProgress>,
+    originalError: unknown
+  ) {
     if (originalError instanceof TaskFailureError) return;
     if (taskRef.state !== TaskState.ACTIVE) return;
 

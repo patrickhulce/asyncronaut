@@ -1,5 +1,12 @@
 import {createDecomposedPromise, flushAllMicrotasks, waitMs, withInspection} from './promises';
-import {QueueState, TaskFailureError, TaskQueue, TaskRef, TaskState} from './task-queue';
+import {
+  ProgressUpdate,
+  QueueState,
+  TaskFailureError,
+  TaskQueue,
+  TaskRef,
+  TaskState,
+} from './task-queue';
 
 import '../test/jest';
 
@@ -157,6 +164,27 @@ describe(TaskQueue, () => {
       expect(taskRef3.state).toEqual(TaskState.ACTIVE);
 
       onTaskDecomposed.resolve();
+    });
+
+    it('emits progress updates', async () => {
+      taskHandler.mockImplementation(async (taskRef: TaskRef<number, string>) => {
+        await waitMs(1_000);
+        taskRef.emit('progress', {completedItems: 1, totalItems: 3});
+        await waitMs(1_000);
+        taskRef.emit('progress', {completedItems: 2, totalItems: 3});
+        await waitMs(1_000);
+        return 'success';
+      });
+
+      const updates: Array<ProgressUpdate> = [];
+      const taskRef = taskQueue.enqueue(1);
+      taskRef.on('progress', (update) => updates.push(update));
+      taskQueue.start();
+
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(updates).toMatchObject([{completedItems: 1, totalItems: 3}]);
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(updates).toMatchObject([{}, {completedItems: 2, totalItems: 3}]);
     });
 
     it('does not set output when task is aborted but onTask resolves', async () => {
