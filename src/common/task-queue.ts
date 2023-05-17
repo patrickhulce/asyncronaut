@@ -74,6 +74,8 @@ interface TaskRequest<TInput> extends TaskOptions {
 interface InternalTaskRef<TInput, TOutput, TProgress> extends TaskRef<TInput, TOutput, TProgress> {
   /** The underlying decomposed promise for the `completed` property. */
   completedPromiseDecomposed: DecomposedPromise<void>;
+  /** The underlying event emitter that powers progress updates. */
+  eventEmitter: EventEmitter;
 }
 
 function uuid() {
@@ -144,12 +146,14 @@ export class TaskQueue<TInput, TOutput, TProgress = ProgressUpdate> extends Even
       output: undefined,
       error: undefined,
       completed: completedPromiseDecomposed.promise,
-      completedPromiseDecomposed,
       signal: abortController.signal,
       abort: abortController.abort.bind(abortController),
       emit: eventEmitter.emit.bind(eventEmitter),
       on: eventEmitter.on.bind(eventEmitter),
       off: eventEmitter.off.bind(eventEmitter),
+
+      completedPromiseDecomposed,
+      eventEmitter,
     };
 
     // Handle removal from the queue when task is aborted.
@@ -240,6 +244,7 @@ export class TaskQueue<TInput, TOutput, TProgress = ProgressUpdate> extends Even
     const numTasksToGc = Math.max(0, completedTasks.length - this._options.maxCompletedTaskMemory);
     const taskRefsToGc = completedTasks.slice(0, numTasksToGc);
     for (const taskRef of taskRefsToGc) {
+      taskRef.eventEmitter.removeAllListeners();
       this._tasks[taskRef.state] = this._tasks[taskRef.state].filter((ref) => taskRef !== ref);
     }
   }
