@@ -44,6 +44,11 @@ export enum TaskState {
   FAILED = 'failed',
 }
 
+export interface QueueDiagnostics<TInput, TOutput> {
+  state: QueueState;
+  tasks: Record<TaskState, Array<TaskRef<TInput, TOutput>>>;
+}
+
 interface TaskRequest<TInput> extends TaskOptions {
   input: TInput;
 }
@@ -118,16 +123,8 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
 
     // Handle removal from the queue when task is aborted.
     // All other flows go through the `withTimeout` handling in `_process`
-    abortController.signal.addEventListener('abort', () => {
-      if (taskRef.state !== TaskState.QUEUED) return;
-
-      this._tasks[TaskState.CANCELLED].push(taskRef);
-      this._tasks[TaskState.QUEUED] = this._tasks[TaskState.QUEUED].filter(
-        (ref) => ref !== taskRef
-      );
-      taskRef.state = TaskState.CANCELLED;
-      taskRef.error = new TaskFailureError(taskRef, abortController.signal.reason);
-      taskRef.completedPromiseDecomposed.resolve();
+    taskRef.signal.addEventListener('abort', () => {
+      this._processTaskCancellation(taskRef);
     });
 
     this._tasks[TaskState.QUEUED].push(taskRef);
@@ -175,6 +172,19 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
     }
   }
 
+  getDiagnostics(): QueueDiagnostics<TInput, TOutput> {
+    return {
+      state: this._state,
+      tasks: {
+        [TaskState.QUEUED]: this._tasks[TaskState.QUEUED].slice(),
+        [TaskState.ACTIVE]: this._tasks[TaskState.ACTIVE].slice(),
+        [TaskState.CANCELLED]: this._tasks[TaskState.CANCELLED].slice(),
+        [TaskState.FAILED]: this._tasks[TaskState.FAILED].slice(),
+        [TaskState.SUCCEEDED]: this._tasks[TaskState.SUCCEEDED].slice(),
+      },
+    };
+  }
+
   private async _getPromiseOfAllTasks(): Promise<void> {
     const queuedPromises = this._tasks[TaskState.QUEUED].map((ref) => ref.completed);
     const activePromises = this._tasks[TaskState.ACTIVE].map((ref) => ref.completed);
@@ -206,13 +216,26 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
       .then((result) => this._processTaskSuccess(taskRef, result))
       .catch((error) => this._processTaskFailure(taskRef, error));
 
-    this._tasks[TaskState.ACTIVE] = this._tasks[TaskState.ACTIVE].filter((ref) => ref !== taskRef);
-    this._tasks[taskRef.state].push(taskRef);
     this._startNextIfPossible();
+  }
+
+  private _processTaskCancellation(taskRef: InternalTaskRef<TInput, TOutput>) {
+    if (taskRef.state !== TaskState.QUEUED) return;
+
+    this._tasks[TaskState.QUEUED] = this._tasks[TaskState.QUEUED].filter((ref) => ref !== taskRef);
+    this._tasks[TaskState.CANCELLED].push(taskRef);
+
+    taskRef.state = TaskState.CANCELLED;
+    taskRef.error = new TaskFailureError(taskRef, taskRef.signal.reason);
+
+    taskRef.completedPromiseDecomposed.resolve();
   }
 
   private _processTaskSuccess(taskRef: InternalTaskRef<TInput, TOutput>, result: TOutput) {
     if (taskRef.state !== TaskState.ACTIVE) return;
+
+    this._tasks[TaskState.ACTIVE] = this._tasks[TaskState.ACTIVE].filter((ref) => ref !== taskRef);
+    this._tasks[TaskState.SUCCEEDED].push(taskRef);
 
     taskRef.state = TaskState.SUCCEEDED;
     taskRef.output = result;
@@ -223,6 +246,9 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
   private _processTaskFailure(taskRef: InternalTaskRef<TInput, TOutput>, originalError: unknown) {
     if (originalError instanceof TaskFailureError) return;
     if (taskRef.state !== TaskState.ACTIVE) return;
+
+    this._tasks[TaskState.ACTIVE] = this._tasks[TaskState.ACTIVE].filter((ref) => ref !== taskRef);
+    this._tasks[TaskState.FAILED].push(taskRef);
 
     const error = new TaskFailureError(taskRef, originalError);
     taskRef.state = TaskState.FAILED;
