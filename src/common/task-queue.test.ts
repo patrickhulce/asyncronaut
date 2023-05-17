@@ -22,10 +22,14 @@ function onTaskMock(
 describe(TaskQueue, () => {
   let taskQueue: TaskQueue<number, string>;
   let taskHandler: jest.Mock;
+  let dateNowFn: jest.Mock;
 
   beforeEach(() => {
+    let dateNowValue = 1_000;
+    dateNowFn = jest.fn().mockImplementation(() => dateNowValue++);
     taskHandler = jest.fn();
-    taskQueue = new TaskQueue<number, string>({onTask: taskHandler});
+    taskQueue = new TaskQueue<number, string>({onTask: taskHandler, dateNow: dateNowFn});
+
     jest.useFakeTimers();
   });
 
@@ -36,6 +40,7 @@ describe(TaskQueue, () => {
 
     // Go back to real timers to cleanup.
     jest.useRealTimers();
+    dateNowFn.mockRestore();
   });
 
   describe('enqueue()', () => {
@@ -450,6 +455,43 @@ describe(TaskQueue, () => {
       });
 
       onTaskDecomposed.resolve();
+    });
+
+    it('limits diagnostics to maxCompletedTaskMemory', async () => {
+      taskHandler.mockImplementation((taskRef: TaskRef<number, string>) =>
+        taskRef.request.input % 3 === 0
+          ? Promise.resolve('success')
+          : Promise.reject(new Error(`Task failure #${taskRef.request.input}`))
+      );
+
+      taskQueue = new TaskQueue({
+        maxCompletedTaskMemory: 30,
+        onTask: taskHandler,
+        dateNow: dateNowFn,
+      });
+      taskQueue.on('error', jest.fn());
+      taskQueue.start();
+
+      // Create 60 tasks that will have the following states repeating SUCCEEDED,FAILED,CANCELLED
+      const tasks: TaskRef<number, string>[] = [];
+      for (let i = 0; i < 60; i++) {
+        const taskRef = taskQueue.enqueue(i);
+        tasks.push(taskRef);
+        if (i % 3 === 2) taskRef.abort();
+      }
+
+      await flushAllMicrotasks();
+
+      for (let i = 0; i < 60; i++) {
+        if (i % 3 === 0) expect(tasks[i]).toMatchObject({state: TaskState.SUCCEEDED});
+        if (i % 3 === 1) expect(tasks[i]).toMatchObject({state: TaskState.FAILED});
+        if (i % 3 === 2) expect(tasks[i]).toMatchObject({state: TaskState.CANCELLED});
+      }
+
+      const diagnostics = taskQueue.getDiagnostics();
+      expect(diagnostics.tasks[TaskState.SUCCEEDED]).toHaveLength(15);
+      expect(diagnostics.tasks[TaskState.FAILED]).toHaveLength(15);
+      expect(diagnostics.tasks[TaskState.CANCELLED]).toHaveLength(0);
     });
   });
 

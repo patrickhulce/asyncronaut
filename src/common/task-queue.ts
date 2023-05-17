@@ -2,8 +2,14 @@ import {EventEmitter} from 'events';
 import {DecomposedPromise, createDecomposedPromise, withTimeout} from './promises';
 
 export interface QueueOptions<TInput, TOutput> {
+  /** The maximum number of tasks that can be active at once, defaults to 1. */
   maxConcurrentTasks: number;
+  /** The maximum number of completed tasks that should be saved for diagnostic purposes, defaults to 100. */
+  maxCompletedTaskMemory: number;
+  /** The function to process tasks in the queue. */
   onTask(ref: TaskRef<TInput, TOutput>): Promise<TOutput>;
+  /** The function to use to acquire the current UNIX timestamp. */
+  dateNow(): number;
 }
 
 export interface TaskRef<TInput, TOutput> {
@@ -11,6 +17,10 @@ export interface TaskRef<TInput, TOutput> {
   id: string;
   /** The current state of this task in the execution lifecycle. */
   state: TaskState;
+  /** UNIX timestamp for the time at which this task was enqueued. */
+  queuedAt: number;
+  /** UNIX timestamp for the time at which this task was completed. */
+  completedAt: number | undefined;
   /** The options used when requesting the task, including input arguments. */
   request: TaskRequest<TInput>;
   /** The task's result, only set when the task has completed successfully. */
@@ -91,9 +101,11 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
     super();
     this._options = {
       maxConcurrentTasks: 1,
+      maxCompletedTaskMemory: 100,
       onTask() {
         throw new Error('`onTask` left unimplemented in TaskQueue constructor');
       },
+      dateNow: Date.now,
       ...options,
     };
   }
@@ -113,6 +125,8 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
       id: uuid(),
       state: TaskState.QUEUED,
       request: {input, ...options},
+      queuedAt: this._options.dateNow(),
+      completedAt: undefined,
       output: undefined,
       error: undefined,
       completed: completedPromiseDecomposed.promise,
@@ -199,6 +213,20 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
     this._processNext();
   }
 
+  private _garbageCollectCompletedTasks() {
+    const completedTasks = [
+      ...this._tasks[TaskState.SUCCEEDED],
+      ...this._tasks[TaskState.FAILED],
+      ...this._tasks[TaskState.CANCELLED],
+    ].sort((a, b) => (a.completedAt || Infinity) - (b.completedAt || Infinity));
+
+    const numTasksToGc = Math.max(0, completedTasks.length - this._options.maxCompletedTaskMemory);
+    const taskRefsToGc = completedTasks.slice(0, numTasksToGc);
+    for (const taskRef of taskRefsToGc) {
+      this._tasks[taskRef.state] = this._tasks[taskRef.state].filter((ref) => taskRef !== ref);
+    }
+  }
+
   private _processNext() {
     const taskRef = this._tasks[TaskState.QUEUED].shift();
     if (!taskRef) throw new Error('No task queued');
@@ -222,11 +250,13 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
   private _processTaskCancellation(taskRef: InternalTaskRef<TInput, TOutput>) {
     if (taskRef.state !== TaskState.QUEUED) return;
 
-    this._tasks[TaskState.QUEUED] = this._tasks[TaskState.QUEUED].filter((ref) => ref !== taskRef);
-    this._tasks[TaskState.CANCELLED].push(taskRef);
-
     taskRef.state = TaskState.CANCELLED;
     taskRef.error = new TaskFailureError(taskRef, taskRef.signal.reason);
+    taskRef.completedAt = this._options.dateNow();
+
+    this._tasks[TaskState.QUEUED] = this._tasks[TaskState.QUEUED].filter((ref) => ref !== taskRef);
+    this._tasks[TaskState.CANCELLED].push(taskRef);
+    this._garbageCollectCompletedTasks();
 
     taskRef.completedPromiseDecomposed.resolve();
   }
@@ -234,11 +264,13 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
   private _processTaskSuccess(taskRef: InternalTaskRef<TInput, TOutput>, result: TOutput) {
     if (taskRef.state !== TaskState.ACTIVE) return;
 
-    this._tasks[TaskState.ACTIVE] = this._tasks[TaskState.ACTIVE].filter((ref) => ref !== taskRef);
-    this._tasks[TaskState.SUCCEEDED].push(taskRef);
-
     taskRef.state = TaskState.SUCCEEDED;
     taskRef.output = result;
+    taskRef.completedAt = this._options.dateNow();
+
+    this._tasks[TaskState.ACTIVE] = this._tasks[TaskState.ACTIVE].filter((ref) => ref !== taskRef);
+    this._tasks[TaskState.SUCCEEDED].push(taskRef);
+    this._garbageCollectCompletedTasks();
 
     taskRef.completedPromiseDecomposed.resolve();
   }
@@ -247,14 +279,16 @@ export class TaskQueue<TInput, TOutput> extends EventEmitter {
     if (originalError instanceof TaskFailureError) return;
     if (taskRef.state !== TaskState.ACTIVE) return;
 
-    this._tasks[TaskState.ACTIVE] = this._tasks[TaskState.ACTIVE].filter((ref) => ref !== taskRef);
-    this._tasks[TaskState.FAILED].push(taskRef);
-
     const error = new TaskFailureError(taskRef, originalError);
     taskRef.state = TaskState.FAILED;
     taskRef.error = error;
-    this.emit('error', error);
+    taskRef.completedAt = this._options.dateNow();
 
+    this._tasks[TaskState.ACTIVE] = this._tasks[TaskState.ACTIVE].filter((ref) => ref !== taskRef);
+    this._tasks[TaskState.FAILED].push(taskRef);
+    this._garbageCollectCompletedTasks();
+
+    this.emit('error', error);
     taskRef.completedPromiseDecomposed.resolve();
   }
 }
