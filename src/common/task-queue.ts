@@ -60,13 +60,13 @@ function uuid() {
 }
 
 export class TaskFailureError extends Error {
-  constructor(public taskRef: TaskRef<unknown, unknown>, public originalError: unknown) {
+  constructor(public taskRef: TaskRef<unknown, unknown>, public reason: unknown) {
     super();
 
     this.taskRef = {...this.taskRef, error: undefined};
-    if (originalError instanceof Error) {
-      this.message = `(${originalError.name}) ${originalError.message}`;
-      this.stack = originalError.stack;
+    if (reason instanceof Error) {
+      this.message = `(${reason.name}) ${reason.message}`;
+      this.stack = reason.stack;
     }
   }
 }

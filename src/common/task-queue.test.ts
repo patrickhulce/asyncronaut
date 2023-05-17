@@ -200,14 +200,14 @@ describe(TaskQueue, () => {
       expect(taskRef.error).toBeInstanceOf(TaskFailureError);
 
       const firstError = taskRef.error;
-      const originalError = firstError?.originalError;
+      const originalError = firstError?.reason;
       const rejectError = new Error('onTask rejects');
       onTaskDecomposed.reject(rejectError);
       await flushAllMicrotasks();
 
       expect(taskRef.error).toBe(firstError);
-      expect(taskRef.error).toHaveProperty('originalError', originalError);
-      expect(taskRef.error).not.toHaveProperty('originalError', rejectError);
+      expect(taskRef.error).toHaveProperty('reason', originalError);
+      expect(taskRef.error).not.toHaveProperty('reason', rejectError);
     });
   });
 

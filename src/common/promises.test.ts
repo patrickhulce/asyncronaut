@@ -198,7 +198,7 @@ describe(withTimeout, () => {
     const [error] = cleanupOnReject.mock.calls[0];
     expect(error).toBeInstanceOf(TimeoutSourceLateRejectionError);
     if (!(error instanceof TimeoutSourceLateRejectionError)) throw new Error('Impossible');
-    expect(error.originalRejection).toEqual(nonErrorReason);
+    expect(error.reason).toEqual(nonErrorReason);
   });
 
   it('does not call cleanupOnResolve when the promise resolves before timeout', async () => {

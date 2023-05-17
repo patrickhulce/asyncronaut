@@ -5,7 +5,7 @@ export class AbortError extends Error {
   }
 }
 export class TimeoutSourceLateRejectionError extends Error {
-  constructor(public originalRejection: unknown) {
+  constructor(public reason: unknown) {
     super();
   }
 }
