@@ -1,4 +1,4 @@
-import {waitMs} from '../../common/promises';
+import {delay} from '../../common/promises';
 import {TaskQueue, TaskState} from '../../common/task-queue';
 
 const SUCCESS_FRACTION = 0.6;
@@ -12,16 +12,16 @@ async function main() {
     async onTask(taskRef) {
       const fate = taskRef.request.input;
       if (fate < SUCCESS_FRACTION) {
-        await waitMs(0);
+        await delay(0);
         let string = '';
         for (let i = 0; i < 1_000_000; i++) string += Math.round(Math.random() * 16).toString(16);
         return string;
       } else if (fate < FAILURE_CUTOFF) {
-        await waitMs(0);
+        await delay(0);
         throw new Error('Task failed!');
       } else {
         // This task will be cancelled!
-        await waitMs(30_000);
+        await delay(30_000);
         if (!taskRef.signal.reason || (taskRef as any).state !== TaskState.FAILED) {
           console.error('Never should have made it here!', taskRef);
           // eslint-disable-next-line no-process-exit
@@ -58,7 +58,7 @@ async function main() {
   for (let i = 0; i < 10_000; i++) {
     if (i % 1_000 === 0) {
       console.log(`Enqueuing task #${i}...`);
-      await waitMs(0);
+      await delay(0);
       await taskQueue.waitForCompletion();
     }
     const fate = Math.random();

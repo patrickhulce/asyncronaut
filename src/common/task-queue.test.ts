@@ -1,4 +1,4 @@
-import {createDecomposedPromise, flushAllMicrotasks, waitMs, withInspection} from './promises';
+import {createDecomposedPromise, flushAllMicrotasks, delay, withInspection} from './promises';
 import {
   ProgressUpdate,
   QueueState,
@@ -18,7 +18,7 @@ function onTaskMock(
       // eslint-disable-next-line no-constant-condition
       while (true) {
         taskRef.signal.throwIfAborted();
-        await waitMs(100);
+        await delay(100);
       }
     };
   }
@@ -168,11 +168,11 @@ describe(TaskQueue, () => {
 
     it('emits progress updates', async () => {
       taskHandler.mockImplementation(async (taskRef: TaskRef<number, string>) => {
-        await waitMs(1_000);
+        await delay(1_000);
         taskRef.emit('progress', {completedItems: 1, totalItems: 3});
-        await waitMs(1_000);
+        await delay(1_000);
         taskRef.emit('progress', {completedItems: 2, totalItems: 3});
-        await waitMs(1_000);
+        await delay(1_000);
         return 'success';
       });
 
