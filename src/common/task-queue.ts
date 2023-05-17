@@ -7,7 +7,7 @@ export interface QueueOptions<TInput, TOutput> {
   /** The maximum number of completed tasks that should be saved for diagnostic purposes, defaults to 100. */
   maxCompletedTaskMemory: number;
   /** The function to process tasks in the queue. */
-  onTask(ref: TaskRef<TInput, TOutput>): Promise<TOutput>;
+  onTask(ref: Pick<TaskRef<TInput, TOutput>, 'id' | 'request' | 'signal'>): Promise<TOutput>;
   /** The function to use to acquire the current UNIX timestamp. */
   dateNow(): number;
 }
