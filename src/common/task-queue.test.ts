@@ -1,5 +1,5 @@
 import {createDecomposedPromise, flushAllMicrotasks, waitMs, withInspection} from './promises';
-import {TaskFailureError, TaskQueue, TaskRef, TaskState} from './task-queue';
+import {QueueState, TaskFailureError, TaskQueue, TaskRef, TaskState} from './task-queue';
 
 import '../test/jest';
 
@@ -30,8 +30,11 @@ describe(TaskQueue, () => {
   });
 
   afterEach(async () => {
+    // Catch any floating errors that may be lingering.
     await jest.advanceTimersByTimeAsync(600_000);
     await flushAllMicrotasks();
+
+    // Go back to real timers to cleanup.
     jest.useRealTimers();
   });
 
@@ -391,6 +394,62 @@ describe(TaskQueue, () => {
 
       expect(taskRef1).toMatchObject({state: TaskState.SUCCEEDED});
       expect(taskRef2).toMatchObject({state: TaskState.SUCCEEDED});
+    });
+  });
+
+  describe('getDiagnostics()', () => {
+    it('returns the queue state', async () => {
+      expect(taskQueue.getDiagnostics()).toMatchObject({state: QueueState.PAUSED});
+      taskQueue.start();
+      expect(taskQueue.getDiagnostics()).toMatchObject({state: QueueState.RUNNING});
+      const drainPromise = withInspection(taskQueue.drain());
+      expect(taskQueue.getDiagnostics()).toMatchObject({state: QueueState.DRAINING});
+      await flushAllMicrotasks();
+      expect(drainPromise).toBeDone();
+      expect(taskQueue.getDiagnostics()).toMatchObject({state: QueueState.DRAINED});
+    });
+
+    it('returns tasks in each state', async () => {
+      const onErrorFn = jest.fn();
+      taskQueue.on('error', onErrorFn);
+
+      const onTaskDecomposed = createDecomposedPromise<void>();
+      taskHandler
+        .mockResolvedValueOnce('success')
+        .mockRejectedValueOnce(new Error('Task failure'))
+        .mockResolvedValueOnce(onTaskDecomposed.promise)
+        .mockResolvedValueOnce('success');
+
+      const taskRef1 = taskQueue.enqueue(1);
+      const taskRef2 = taskQueue.enqueue(2);
+      const taskRef3 = taskQueue.enqueue(3);
+      const taskRef4 = taskQueue.enqueue(4);
+      const taskRef5 = taskQueue.enqueue(5);
+
+      taskRef3.abort();
+      await flushAllMicrotasks();
+
+      taskQueue.start();
+      await jest.advanceTimersByTimeAsync(1_000);
+      await flushAllMicrotasks();
+
+      expect(taskRef1).toMatchObject({state: TaskState.SUCCEEDED});
+      expect(taskRef2).toMatchObject({state: TaskState.FAILED});
+      expect(taskRef3).toMatchObject({state: TaskState.CANCELLED});
+      expect(taskRef4).toMatchObject({state: TaskState.ACTIVE});
+      expect(taskRef5).toMatchObject({state: TaskState.QUEUED});
+
+      expect(taskQueue.getDiagnostics()).toMatchObject({
+        tasks: {
+          [TaskState.QUEUED]: [taskRef5],
+          [TaskState.ACTIVE]: [taskRef4],
+          [TaskState.CANCELLED]: [taskRef3],
+          [TaskState.FAILED]: [taskRef2],
+          [TaskState.SUCCEEDED]: [taskRef1],
+        },
+      });
+
+      onTaskDecomposed.resolve();
     });
   });
 
