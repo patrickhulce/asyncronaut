@@ -125,6 +125,10 @@ export class TaskQueue<TInput, TOutput, TProgress = ProgressUpdate> extends Even
     };
   }
 
+  /**
+   * Enqueues a new task to be executed by the queue. This method is synchronous and does not
+   * await completion of the task. Use the `taskRef.completed` promise to await completion.
+   */
   enqueue(input: TInput, options?: TaskOptions): TaskRef<TInput, TOutput, TProgress> {
     if (this._state === QueueState.DRAINING || this._state === QueueState.DRAINED) {
       throw new Error(`Cannot enqueue tasks to drained queue`);
@@ -167,6 +171,9 @@ export class TaskQueue<TInput, TOutput, TProgress = ProgressUpdate> extends Even
     return taskRef;
   }
 
+  /**
+   * Starts execution of tasks in the queue.
+   */
   start(): void {
     if (this._state === QueueState.RUNNING) return;
 
@@ -178,6 +185,9 @@ export class TaskQueue<TInput, TOutput, TProgress = ProgressUpdate> extends Even
     this._startNextIfPossible();
   }
 
+  /**
+   * Pauses execution of new tasks in the queue, but allows existing tasks to complete.
+   */
   pause(): void {
     if (this._state === QueueState.PAUSED) return;
 
@@ -188,6 +198,10 @@ export class TaskQueue<TInput, TOutput, TProgress = ProgressUpdate> extends Even
     this._state = QueueState.PAUSED;
   }
 
+  /**
+   * Immediately aborts all currently running tasks. Once a queue has been drained it cannot be
+   * used again.
+   */
   async drain(): Promise<void> {
     this._state = QueueState.DRAINING;
     const taskCompletionPromise = this.waitForCompletion();
@@ -200,6 +214,10 @@ export class TaskQueue<TInput, TOutput, TProgress = ProgressUpdate> extends Even
     this._state = QueueState.DRAINED;
   }
 
+  /**
+   * Awaits for tasks to complete. If new tasks are queued while waiting for completion, those tasks
+   * will be awaited as well.
+   */
   async waitForCompletion(): Promise<void> {
     await this._getPromiseOfAllTasks();
     if (this._tasks[TaskState.QUEUED].length || this._tasks[TaskState.ACTIVE].length) {
@@ -207,6 +225,9 @@ export class TaskQueue<TInput, TOutput, TProgress = ProgressUpdate> extends Even
     }
   }
 
+  /**
+   * Retrieves diagnostic information about task state and the queue itself.
+   */
   getDiagnostics(): QueueDiagnostics<TInput, TOutput, TProgress> {
     return {
       state: this._state,
