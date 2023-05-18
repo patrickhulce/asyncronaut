@@ -1,12 +1,38 @@
 import {createServer} from 'http';
 import express from 'express';
-import {createDecomposedPromise} from '../common/promises';
+import {createDecomposedPromise, delay} from '../common/promises';
 
 export enum ResponseDeliveryType {
   COMPLETE = 'complete',
+  STREAM = 'stream',
+  CUSTOM = 'custom',
 }
 
-export type ResponseDefinition = {deliveryType: ResponseDeliveryType.COMPLETE; body: unknown};
+interface ResponseCommonProperties {
+  body?: unknown;
+  fetchBody?(req: import('express').Request): Promise<unknown>;
+  delayMs: number;
+}
+
+interface ResponseCompleteDefinition extends ResponseCommonProperties {
+  deliveryType: ResponseDeliveryType.COMPLETE;
+}
+
+interface ResponseStreamDefinition extends ResponseCommonProperties {
+  deliveryType: ResponseDeliveryType.STREAM;
+  chunkSizeInBytes?: number;
+  chunkGapInMs?: number;
+}
+
+interface ResponseCustomDefinition {
+  deliveryType: ResponseDeliveryType.CUSTOM;
+  handler: import('express').RequestHandler;
+}
+
+export type ResponseDefinition =
+  | ResponseCompleteDefinition
+  | ResponseStreamDefinition
+  | ResponseCustomDefinition;
 
 export interface RouteDefinition {
   path: string;
@@ -34,12 +60,37 @@ const FUNCTION_FOR_METHOD: Record<RouteDefinition['method'], 'get' | 'post' | 'p
 };
 
 function createRouteHandler(route: RouteDefinition): express.RequestHandler {
-  const {body} = route.response;
+  const {response} = route;
   return async (req, res, next) => {
     try {
-      if (typeof body === 'string') res.end(body);
-      else if (Buffer.isBuffer(body)) res.end(body);
-      else res.json(body);
+      if (response.deliveryType === ResponseDeliveryType.CUSTOM) {
+        await response.handler(req, res, next);
+        return;
+      }
+
+      let {body = '', fetchBody} = response;
+      if (fetchBody) body = await fetchBody(req);
+
+      const bodyAsBuffer = Buffer.isBuffer(body)
+        ? body
+        : typeof body === 'string'
+        ? Buffer.from(body)
+        : Buffer.from(JSON.stringify(body));
+
+      if (response.delayMs) await delay(response.delayMs);
+
+      if (response.deliveryType === ResponseDeliveryType.COMPLETE) {
+        res.end(bodyAsBuffer);
+      } else if (response.deliveryType === ResponseDeliveryType.STREAM) {
+        const {chunkSizeInBytes = 8096, chunkGapInMs = 50} = response;
+        for (let i = 0; i < bodyAsBuffer.byteLength; i += chunkSizeInBytes) {
+          const chunk = bodyAsBuffer.subarray(i, i + chunkSizeInBytes);
+          res.write(chunk);
+          await delay(chunkGapInMs);
+        }
+
+        res.end();
+      }
     } catch (err) {
       next(err);
     }
