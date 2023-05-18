@@ -67,7 +67,7 @@ export interface QueueDiagnostics<TInput, TOutput, TProgress> {
   tasks: Record<TaskState, Array<TaskRef<TInput, TOutput, TProgress>>>;
 }
 
-interface TaskRequest<TInput> extends TaskOptions {
+export interface TaskRequest<TInput> extends TaskOptions {
   input: TInput;
 }
 

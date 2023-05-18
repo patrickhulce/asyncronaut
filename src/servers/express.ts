@@ -11,7 +11,7 @@ export enum ResponseDeliveryType {
 
 interface ResponseCommonProperties {
   body?: unknown;
-  fetchBody?(req: import('express').Request): Promise<unknown>;
+  fetchBody?(req: express.Request): Promise<unknown>;
   delayMs?: number;
 }
 
@@ -34,7 +34,7 @@ interface ResponseServerSentEventsDefinition {
 
 interface ResponseCustomDefinition {
   deliveryType: ResponseDeliveryType.CUSTOM;
-  handler: import('express').RequestHandler;
+  handler: express.RequestHandler;
   delayMs?: number;
 }
 

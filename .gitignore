@@ -1,7 +1,10 @@
 node_modules/
 dist/
-docs/
-coverage/
+/docs/
+/coverage/
+/streams/
+/jest/
+/express/
 
 *.log
 *.lock
