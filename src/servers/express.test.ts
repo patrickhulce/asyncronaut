@@ -158,6 +158,30 @@ describe(createTestServer, () => {
     expect(isClosed).toBe(true);
   });
 
+  it('supports SSE delivery', async () => {
+    const serverDefinition = createDefinition({
+      response: {
+        deliveryType: ResponseDeliveryType.SERVER_SENT_EVENTS,
+        events: [{packet: 1}, {packet: 2}, {packet: 3}, {packet: 4}],
+      },
+    });
+
+    server = await createTestServer(serverDefinition);
+    const response = await fetch(`${server.baseURL}/test`);
+    const text = await response.text();
+
+    expect(response.status).toEqual(200);
+    expect(text).toEqual(
+      [
+        `data: {"packet":1}`,
+        `data: {"packet":2}`,
+        `data: {"packet":3}`,
+        `data: {"packet":4}`,
+        '',
+      ].join('\n')
+    );
+  });
+
   it('supports custom handlers', async () => {
     const serverDefinition = createDefinition({
       response: {

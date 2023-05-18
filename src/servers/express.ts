@@ -5,13 +5,14 @@ import {createDecomposedPromise, delay} from '../common/promises';
 export enum ResponseDeliveryType {
   COMPLETE = 'complete',
   STREAM = 'stream',
+  SERVER_SENT_EVENTS = 'sse',
   CUSTOM = 'custom',
 }
 
 interface ResponseCommonProperties {
   body?: unknown;
   fetchBody?(req: import('express').Request): Promise<unknown>;
-  delayMs: number;
+  delayMs?: number;
 }
 
 interface ResponseCompleteDefinition extends ResponseCommonProperties {
@@ -24,14 +25,23 @@ interface ResponseStreamDefinition extends ResponseCommonProperties {
   chunkGapInMs?: number;
 }
 
+interface ResponseServerSentEventsDefinition {
+  deliveryType: ResponseDeliveryType.SERVER_SENT_EVENTS;
+  events: Iterable<unknown>;
+  delayMs?: number;
+  chunkGapInMs?: number;
+}
+
 interface ResponseCustomDefinition {
   deliveryType: ResponseDeliveryType.CUSTOM;
   handler: import('express').RequestHandler;
+  delayMs?: number;
 }
 
 export type ResponseDefinition =
   | ResponseCompleteDefinition
   | ResponseStreamDefinition
+  | ResponseServerSentEventsDefinition
   | ResponseCustomDefinition;
 
 export interface RouteDefinition {
@@ -59,34 +69,46 @@ const FUNCTION_FOR_METHOD: Record<RouteDefinition['method'], 'get' | 'post' | 'p
   DELETE: 'delete',
 };
 
+function coerceToBuffer(value: unknown): Buffer {
+  return Buffer.isBuffer(value)
+    ? value
+    : typeof value === 'string'
+    ? Buffer.from(value)
+    : Buffer.from(JSON.stringify(value));
+}
+
 function createRouteHandler(route: RouteDefinition): express.RequestHandler {
   const {response} = route;
   return async (req, res, next) => {
     try {
+      if (response.delayMs) await delay(response.delayMs);
+
       if (response.deliveryType === ResponseDeliveryType.CUSTOM) {
         await response.handler(req, res, next);
         return;
       }
 
+      if (response.deliveryType === ResponseDeliveryType.SERVER_SENT_EVENTS) {
+        for (const event of response.events) {
+          res.write(`data: ${typeof event === 'string' ? event : JSON.stringify(event)}\n`);
+          if (response.chunkGapInMs) await delay(response.chunkGapInMs);
+        }
+        res.end();
+        return;
+      }
+
       let {body = '', fetchBody} = response;
       if (fetchBody) body = await fetchBody(req);
-
-      const bodyAsBuffer = Buffer.isBuffer(body)
-        ? body
-        : typeof body === 'string'
-        ? Buffer.from(body)
-        : Buffer.from(JSON.stringify(body));
-
-      if (response.delayMs) await delay(response.delayMs);
+      const buffer = coerceToBuffer(body);
 
       if (response.deliveryType === ResponseDeliveryType.COMPLETE) {
-        res.end(bodyAsBuffer);
+        res.end(buffer);
       } else if (response.deliveryType === ResponseDeliveryType.STREAM) {
-        const {chunkSizeInBytes = 8096, chunkGapInMs = 50} = response;
-        for (let i = 0; i < bodyAsBuffer.byteLength; i += chunkSizeInBytes) {
-          const chunk = bodyAsBuffer.subarray(i, i + chunkSizeInBytes);
+        const {chunkSizeInBytes = 8096} = response;
+        for (let i = 0; i < buffer.byteLength; i += chunkSizeInBytes) {
+          const chunk = buffer.subarray(i, i + chunkSizeInBytes);
           res.write(chunk);
-          await delay(chunkGapInMs);
+          if (response.chunkGapInMs) await delay(response.chunkGapInMs);
         }
 
         res.end();
