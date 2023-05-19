@@ -20,7 +20,8 @@
     "test:typecheck": "tsc --noEmit",
     "test:unit": "jest",
     "test:watch": "jest --watch",
-    "test:lint": "eslint 'src/**/*.{js,ts}' && prettier 'src/**/*.{js,ts}' --check"
+    "test:lint": "eslint 'src/**/*.{js,ts}' && prettier 'src/**/*.{js,ts}' --check",
+    "release": "semantic-release"
   },
   "keywords": [
     "async",
