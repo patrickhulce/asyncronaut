@@ -8,6 +8,14 @@ on:
 
   workflow_dispatch:
 
+# Set permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages & releases
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  pages: write
+  id-token: write
+
 jobs:
   CI:
     environment:
