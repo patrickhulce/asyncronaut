@@ -14,7 +14,7 @@ npm i asyncronaut
 
 ### Promises
 
-```typescript
+```javascript
 import {
   delay,
   withTimeout,
@@ -25,63 +25,47 @@ import {
 } from 'asyncronaut';
 ```
 
-#### Delay
+#### `withTimeout`
 
-Defers execution of the subsequent microtask for a specified duration.
+Adds timeout management to an existing promise that respects existing abortController signals.
 
-```typescript
-await delay(2000);
-console.log('This message will be printed after a delay of 2 seconds');
+```javascript
+import {withTimeout} from 'asyncronaut/promises';
+
+// Create an AbortController
+const abortController = new AbortController();
+
+// Link the abort controller to the promise and the timeout.
+const fetchWithTimeout = withTimeout(
+  fetch('https://api.mysite.com/long', {signal: abortController.signal}),
+  {
+    timeoutMs: 3000,
+    abortController,
+  }
+);
+
+fetchWithTimeout.catch((error) => {
+  // The request will automatically be cancelled when timeout hits.
+  console.log('Request timed out');
+});
 ```
 
-#### CreateDecomposedPromise
+#### `createDecomposedPromise`
 
 Creates a promise with exposed resolve and reject methods.
 
-```typescript
+```javascript
 const {promise, resolve, reject} = createDecomposedPromise();
 stream.on('error', reject);
 stream.on('close', resolve);
 return promise;
 ```
 
-#### WithTimeout
-
-Adds timeout management to an existing promise that respects existing abortController signals.
-
-```typescript
-import {AbortController} from 'abort-controller';
-import {withTimeout, AbortError} from 'asyncronaut/promises';
-
-// Create an AbortController
-const abortController = new AbortController();
-
-// Create a promise that resolves in 5 seconds
-const promise = new Promise((resolve) => setTimeout(resolve, 5000));
-
-// Add a timeout and abort controller to the promise
-const promiseWithTimeout = withTimeout(promise, {
-  timeoutMs: 3000,
-  abortController: abortController,
-});
-
-// Abort the promise after 2 seconds
-setTimeout(() => abortController.abort(), 2000);
-
-promiseWithTimeout.catch((error) => {
-  if (error instanceof AbortError) {
-    console.log('Promise was aborted before timeout');
-  } else {
-    console.log('Promise timed out');
-  }
-});
-```
-
-#### WithRetry
+#### `withRetry`
 
 Retries a promise-returning function in case of failure.
 
-```typescript
+```javascript
 const action = () => fetch('https://api.mysite.com/data');
 const actionWithRetry = withRetry(action, {
   retries: 3,
@@ -89,13 +73,13 @@ const actionWithRetry = withRetry(action, {
 });
 ```
 
-#### FlushAllMicrotasks
+#### `flushAllMicrotasks`
 
 Flushes all pending microtasks from the queue.
 
 Use case: In testing scenarios, we can ensure all microtasks are completed before asserting the test outcomes.
 
-```typescript
+```javascript
 test('all microtasks are flushed', async () => {
   // trigger some microtasks
   Promise.resolve().then(() => console.log('Microtask completed'));
@@ -105,11 +89,11 @@ test('all microtasks are flushed', async () => {
 });
 ```
 
-#### WithInspection
+#### `withInspection`
 
 Augments a promise to enable synchronous inspection of its state.
 
-```typescript
+```javascript
 const promise = fetch('https://api.mysite.com/data');
 const inspectablePromise = withInspection(promise);
 
@@ -122,7 +106,7 @@ if (!inspectablePromise.isDone()) {
 
 ### Task Queue
 
-```typescript
+```javascript
 import {TaskQueue} from 'asyncronaut';
 ```
 
@@ -130,18 +114,39 @@ import {TaskQueue} from 'asyncronaut';
 
 Creates a task queue with configurable concurrency and lifecycle events.
 
-```typescript
-const taskQueue = new TaskQueue({
-  maxConcurrentTasks: 5,
-  onTask: (taskRef) => processTask(taskRef.request.input),
-});
+```javascript
+// Task processing function
+const onTask = async (task) => {
+  const {id, request, signal} = task;
+  console.log(`Processing task: ${id}`);
+  const response = await fetch(request.input);
+  return response.json();
+};
 
-taskQueue.enqueue({input: taskData});
+const taskQueue = new TaskQueue({onTask, maxConcurrentTasks: 5});
+// In case of an error, destroy the queue...
+taskQueue.on('error', (err) => taskQueue.drain());
+
+for (let i = 0; i < 10; i++) {
+  taskQueue.enqueue(`https://api.mysite.com/resource/${i}`);
+}
+
+// Start processing tasks...
+taskQueue.start();
+
+// Later on...
+taskQueue.pause();
+
+// And later still...
+taskQueue.start();
+
+// Wait for all tasks in the queue to finish...
+await taskQueue.waitForCompletion();
 ```
 
 ### Streams
 
-```typescript
+```javascript
 import {
   fromNode,
   createSmoothStreamViaPoll,
@@ -149,22 +154,22 @@ import {
 } from 'asyncronaut/streams/web';
 ```
 
-#### FromNode
+#### `fromNode`
 
 Converts a Node.js readable stream to a web readable stream.
 
-```typescript
+```javascript
 const nodeStream = fs.createReadStream('/path/to/file');
 const webStream = fromNode(nodeStream);
 ```
 
-#### CreateSmoothStreamViaPoll
+#### `createSmoothStreamViaPoll`
 
 Creates a smooth stream of data fetched from a poll-based fetcher.
 
 Use case: Continuously fetching state updates from a remote server and streaming them to the client. This could be used to create a real-time dashboard or live-updating visual display.
 
-```typescript
+```javascript
 import {createSmoothStreamViaPoll, CHARACTER_SMOOTH_STREAM_OPTIONS} from 'asyncronaut/streams/web';
 
 const options = {
@@ -187,7 +192,7 @@ const textStream = createSmoothStreamViaPoll(options);
 
 ## License
 
-Asyncronaut is [MIT licensed](#).
+Asyncronaut is [MIT licensed](https://opensource.org/license/mit/).
 
 # Contributing to Asyncronaut
 
@@ -202,7 +207,7 @@ You should have Node.js and npm installed on your system. We cross-publish our p
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/asyncronaut/asyncronaut.git
+   git clone https://github.com/patrickhulce/asyncronaut.git
    cd asyncronaut
    ```
 
@@ -232,7 +237,7 @@ We use Jest for unit testing. To run the tests:
 npm test
 ```
 
-This command will lint the code, check types, and then run all unit tests. If you prefer, you can run Jest in watch mode:
+This command will lint the code, check types, and then run all unit tests. If you prefer, you can run Jest in watch mode as you make changes:
 
 ```bash
 npm run test:watch
@@ -254,8 +259,6 @@ Thank you for your interest in contributing to Asyncronaut! Please feel free to 
 
 ## Roadmap
 
-- Exports with generate-export-aliases
-- Semantic release
 - promises
   - `fromEvent`
 - streams
