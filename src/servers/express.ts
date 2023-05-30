@@ -1,4 +1,4 @@
-import {createServer} from 'http';
+import {createServer as createHttpServer} from 'http';
 import express from 'express';
 import {createDecomposedPromise, delay} from '../common/promises';
 
@@ -119,7 +119,7 @@ function createRouteHandler(route: RouteDefinition): express.RequestHandler {
   };
 }
 
-export async function createTestServer(definition: ServerDefinition): Promise<ServerRef> {
+export async function createServer(definition: ServerDefinition): Promise<ServerRef> {
   const app = express();
   for (const route of definition.routes) {
     app[FUNCTION_FOR_METHOD[route.method]](route.path, createRouteHandler(route));
@@ -127,7 +127,7 @@ export async function createTestServer(definition: ServerDefinition): Promise<Se
 
   const {resolve, reject, promise} = createDecomposedPromise<void>();
 
-  const server = createServer(app);
+  const server = createHttpServer(app);
   server.on('error', (error) => reject(error));
   server.listen(0, resolve);
   await promise;
@@ -145,3 +145,6 @@ export async function createTestServer(definition: ServerDefinition): Promise<Se
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
 }
+
+/** @deprecated Please use `createServer` instead. */
+export const createTestServer = createServer;

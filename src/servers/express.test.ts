@@ -1,5 +1,5 @@
 import fetch from 'node-fetch';
-import {createTestServer, ServerDefinition, ResponseDeliveryType, RouteDefinition} from './express';
+import {createServer, ServerDefinition, ResponseDeliveryType, RouteDefinition} from './express';
 import {flushAllMicrotasks} from '../common/promises';
 
 type RecursivePartial<T> = {
@@ -12,7 +12,7 @@ type RecursivePartial<T> = {
 
 import '../test/jest';
 
-describe(createTestServer, () => {
+describe(createServer, () => {
   let server;
 
   beforeEach(() => {
@@ -49,7 +49,7 @@ describe(createTestServer, () => {
   it('creates a server with a single GET route', async () => {
     const serverDefinition = createDefinition({response: {body: 'Hello, World!'}});
 
-    server = await createTestServer(serverDefinition);
+    server = await createServer(serverDefinition);
     const response = await fetch(`${server.baseURL}/test`);
     const text = await response.text();
 
@@ -61,7 +61,7 @@ describe(createTestServer, () => {
     jest.useRealTimers();
     const serverDefinition = createDefinition({response: {delayMs: 54}});
 
-    server = await createTestServer(serverDefinition);
+    server = await createServer(serverDefinition);
     const startTime = Date.now();
     const response = await fetch(`${server.baseURL}/test`);
     const endTime = Date.now();
@@ -74,7 +74,7 @@ describe(createTestServer, () => {
   it('creates a server that 404s for undefined routes', async () => {
     const serverDefinition = createDefinition({});
 
-    server = await createTestServer(serverDefinition);
+    server = await createServer(serverDefinition);
     const response = await fetch(`${server.baseURL}/missing`, {method: 'GET'});
 
     expect(response.status).toEqual(404);
@@ -88,7 +88,7 @@ describe(createTestServer, () => {
       },
     });
 
-    server = await createTestServer(serverDefinition);
+    server = await createServer(serverDefinition);
     const response = await fetch(`${server.baseURL}/test`, {method: 'POST'});
     const json = await response.json();
 
@@ -99,7 +99,7 @@ describe(createTestServer, () => {
   it('creates a server with a single route that returns a JSON object', async () => {
     const serverDefinition = createDefinition({response: {body: {foo: 'bar'}}});
 
-    server = await createTestServer(serverDefinition);
+    server = await createServer(serverDefinition);
     const response = await fetch(`${server.baseURL}/test`);
     const json = await response.json();
 
@@ -110,7 +110,7 @@ describe(createTestServer, () => {
   it('creates a server with a single route that returns a Buffer', async () => {
     const serverDefinition = createDefinition({response: {body: Buffer.from('Hello, World!')}});
 
-    server = await createTestServer(serverDefinition);
+    server = await createServer(serverDefinition);
     const response = await fetch(`${server.baseURL}/test`);
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
@@ -129,7 +129,7 @@ describe(createTestServer, () => {
       },
     });
 
-    server = await createTestServer(serverDefinition);
+    server = await createServer(serverDefinition);
     const response = await fetch(`${server.baseURL}/test`);
 
     expect(response.status).toEqual(200);
@@ -166,7 +166,7 @@ describe(createTestServer, () => {
       },
     });
 
-    server = await createTestServer(serverDefinition);
+    server = await createServer(serverDefinition);
     const response = await fetch(`${server.baseURL}/test`);
     const text = await response.text();
 
@@ -192,7 +192,7 @@ describe(createTestServer, () => {
       },
     });
 
-    server = await createTestServer(serverDefinition);
+    server = await createServer(serverDefinition);
     const response = await fetch(`${server.baseURL}/test`, {headers: {'x-custom': '1234'}});
     const json = await response.json();
 
