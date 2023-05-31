@@ -27,26 +27,33 @@ export function fromNode(stream: Readable): ReadableStream {
 }
 
 /** Converts a web ReadableStream of items into a promise of an array of items. */
-export function toDecomposedChunks<T>(stream: ReadableStream<T>): {
-  result: Promise<Array<T>>;
+export function toPromise<T>(stream: ReadableStream<T>): Promise<Array<T>> & {
   chunks: Array<T>;
 } {
   const reader = stream.getReader();
   const chunks: Array<T> = [];
 
-  return {
-    chunks,
-    result: (async () => {
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        const {value, done} = await reader.read();
-        if (value) chunks.push(value);
-        if (done) break;
-      }
+  const promise = (async () => {
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const {value, done} = await reader.read();
+      if (value) chunks.push(value);
+      if (done) break;
+    }
 
-      return chunks;
-    })().finally(() => reader.releaseLock()),
-  };
+    return chunks;
+  })().finally(() => reader.releaseLock());
+
+  return Object.assign(promise, {chunks, result: promise});
+}
+
+/** @deprecated Use `toPromise` instead. */
+export function toDecomposedChunks<T>(stream: ReadableStream<T>): {
+  result: Promise<Array<T>>;
+  chunks: Array<T>;
+} {
+  const promise = toPromise(stream);
+  return {result: promise, chunks: promise.chunks};
 }
 
 export interface IncrementFraction<TIncrement> {
