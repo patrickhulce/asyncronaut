@@ -5,7 +5,7 @@ import {
   SmoothStreamOptions,
   createSmoothStreamViaPoll,
   fromNode,
-  toDecomposedChunks,
+  toPromise,
 } from './web';
 import {flushAllMicrotasks, withInspection} from '../promises';
 
@@ -115,7 +115,7 @@ describe(createSmoothStreamViaPoll, () => {
       .mockResolvedValueOnce({state: 'Hello, World!', isDone: true});
 
     const stream = createStream({poll: pollFn});
-    const chunkPromise = withInspection(toDecomposedChunks(stream).result);
+    const chunkPromise = withInspection(toPromise(stream));
 
     await flushAllTimersAndMicrotasks();
 
@@ -128,7 +128,7 @@ describe(createSmoothStreamViaPoll, () => {
     const pollFn = jest.fn().mockResolvedValueOnce({state: 'Hello, World!', isDone: true});
 
     const stream = createStream({poll: pollFn});
-    const chunkPromise = withInspection(toDecomposedChunks(stream).result);
+    const chunkPromise = withInspection(toPromise(stream));
 
     await flushAllTimersAndMicrotasks();
 
@@ -144,7 +144,7 @@ describe(createSmoothStreamViaPoll, () => {
       .mockResolvedValueOnce({state: 'Hello, World!', isDone: true});
 
     const stream = createStream({poll: pollFn});
-    const chunkPromise = withInspection(toDecomposedChunks(stream).result);
+    const chunkPromise = withInspection(toPromise(stream));
 
     await flushAllTimersAndMicrotasks();
 
@@ -171,7 +171,7 @@ describe(createSmoothStreamViaPoll, () => {
       .mockResolvedValueOnce({state: 'Hello, World!', isDone: true});
 
     const stream = createStream({poll: pollFn, signal: abortController.signal});
-    const chunkPromise = withInspection(toDecomposedChunks(stream).result);
+    const chunkPromise = withInspection(toPromise(stream));
 
     setTimeout(() => abortController.abort(), 900);
     jest.advanceTimersByTime(800);
@@ -196,7 +196,8 @@ describe(createSmoothStreamViaPoll, () => {
       .mockResolvedValueOnce({state: 'ABCD', isDone: true});
 
     const stream = createStream({poll: pollFn, pollIntervalMs: 60_000});
-    const {result: promise, chunks} = toDecomposedChunks(stream);
+    const promise = toPromise(stream);
+    const chunks = promise.chunks;
     const chunkPromise = withInspection(promise);
 
     await flushAllMicrotasks();
@@ -227,7 +228,8 @@ describe(createSmoothStreamViaPoll, () => {
       minimumIncrementDurationMs: 20,
       finalIncrementDurationMs: 30,
     });
-    const {result: promise, chunks} = toDecomposedChunks(stream);
+    const promise = toPromise(stream);
+    const chunks = promise.chunks;
     const chunkPromise = withInspection(promise);
 
     await flushAllMicrotasks();
@@ -253,7 +255,8 @@ describe(createSmoothStreamViaPoll, () => {
       pollIntervalMs: 20_000,
       excessIncrementDurationMs: 20_000,
     });
-    const {result: promise, chunks} = toDecomposedChunks(stream);
+    const promise = toPromise(stream);
+    const chunks = promise.chunks;
     const chunkPromise = withInspection(promise);
 
     // Schedules first character immediately.
@@ -285,7 +288,8 @@ describe(createSmoothStreamViaPoll, () => {
       excessIncrementDurationMs: 0,
       finalIncrementDurationMs: 40_000,
     });
-    const {result: promise, chunks} = toDecomposedChunks(stream);
+    const promise = toPromise(stream);
+    const chunks = promise.chunks;
     const chunkPromise = withInspection(promise);
 
     // Schedules first character immediately.
