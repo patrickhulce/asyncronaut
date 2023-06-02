@@ -4,6 +4,7 @@ import {
   CHARACTER_SMOOTH_STREAM_OPTIONS,
   SmoothStreamOptions,
   createSmoothStreamViaPoll,
+  fromChunks,
   fromNode,
   toPromise,
 } from './web';
@@ -76,6 +77,67 @@ describe(fromNode, () => {
     expect(destroySpy).toHaveBeenCalled();
     expect(inspectablePromise).toBeDone();
     await expectationsPromise;
+  });
+});
+
+describe(fromChunks, () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('delivers each chunk with the specified delay', async () => {
+    const chunks = ['chunk1', 'chunk2', 'chunk3'];
+    const chunkGapInMs = 1_000; // 1 second
+    const reader = fromChunks(chunks, {chunkGapInMs}).getReader();
+
+    // Read the first chunk.
+    await jest.advanceTimersByTimeAsync(chunkGapInMs + 1);
+    let result = await reader.read();
+    expect(result.value).toBe('chunk1');
+    expect(result.done).toBeFalsy();
+
+    // Move ahead in time and read the second chunk.
+    await jest.advanceTimersByTimeAsync(chunkGapInMs);
+    result = await reader.read();
+    expect(result.value).toBe('chunk2');
+    expect(result.done).toBeFalsy();
+
+    // Move ahead in time and read the third chunk.
+    await jest.advanceTimersByTimeAsync(chunkGapInMs);
+    result = await reader.read();
+    expect(result.value).toBe('chunk3');
+    expect(result.done).toBeFalsy();
+
+    // Move ahead in time and check if the reader is done.
+    await jest.advanceTimersByTimeAsync(chunkGapInMs);
+    result = await reader.read();
+    expect(result.done).toBeTruthy();
+  });
+
+  it('works with no options', async () => {
+    const chunks = ['chunk1', 'chunk2', 'chunk3'];
+    const reader = fromChunks(chunks).getReader();
+
+    // Read all chunks
+    await jest.advanceTimersByTimeAsync(1_000);
+    let result = await reader.read();
+    expect(result.value).toBe('chunk1');
+    expect(result.done).toBeFalsy();
+
+    result = await reader.read();
+    expect(result.value).toBe('chunk2');
+    expect(result.done).toBeFalsy();
+
+    result = await reader.read();
+    expect(result.value).toBe('chunk3');
+    expect(result.done).toBeFalsy();
+
+    result = await reader.read();
+    expect(result.done).toBeTruthy();
   });
 });
 

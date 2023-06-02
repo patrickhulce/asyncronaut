@@ -1,6 +1,7 @@
 import type {Readable} from 'stream';
 import {ReadableStream, TransformStream} from 'stream/web';
 import createLogger from 'debug';
+import {delay} from '../promises';
 
 const log = createLogger('asyncronaut:streams:verbose');
 
@@ -22,6 +23,26 @@ export function fromNode(stream: Readable): ReadableStream {
     },
     cancel(reason) {
       stream.destroy(reason);
+    },
+  });
+}
+
+/** Converts a static array of chunks into a ReadableStream, yields to async tasks via `setTimeout` in between each chunk. */
+export function fromChunks<T>(
+  chunks: Array<T>,
+  options?: {chunkGapInMs: number}
+): ReadableStream<T> {
+  const {chunkGapInMs = 0} = options ?? {};
+
+  return new ReadableStream({
+    async start(controller) {
+      for (const chunk of chunks) {
+        await delay(chunkGapInMs);
+        controller.enqueue(chunk);
+      }
+
+      await delay(chunkGapInMs);
+      controller.close();
     },
   });
 }
