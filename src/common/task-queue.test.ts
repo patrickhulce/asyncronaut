@@ -245,6 +245,33 @@ describe(TaskQueue, () => {
       expect(taskRef.error).toHaveProperty('reason', originalError);
       expect(taskRef.error).not.toHaveProperty('reason', rejectError);
     });
+
+    describe('maxQueuedTasks', () => {
+      it('throws when queue is running and limit is exceeded', async () => {
+        taskHandler.mockResolvedValue('');
+        taskQueue = new TaskQueue({maxQueuedTasks: 0, maxConcurrentTasks: 2, onTask: taskHandler});
+        taskQueue.start();
+
+        const taskRef1 = taskQueue.enqueue(1);
+        const taskRef2 = taskQueue.enqueue(2);
+
+        expect(taskRef1.state).toEqual(TaskState.ACTIVE);
+        expect(taskRef2.state).toEqual(TaskState.ACTIVE);
+
+        expect(() => taskQueue.enqueue(3)).toThrow();
+      });
+
+      it('throws when queue is paused and limit is exceeded', async () => {
+        taskHandler.mockResolvedValue('');
+        taskQueue = new TaskQueue({maxQueuedTasks: 2, onTask: taskHandler});
+        taskQueue.pause();
+
+        taskQueue.enqueue(1);
+        taskQueue.enqueue(2);
+
+        expect(() => taskQueue.enqueue(3)).toThrow();
+      });
+    });
   });
 
   describe('start()', () => {

@@ -2,6 +2,8 @@ import {EventEmitter} from 'events';
 import {DecomposedPromise, createDecomposedPromise, withTimeout} from './promises';
 
 export interface QueueOptions<TInput, TOutput, TProgress> {
+  /** The maximum number of tasks that can be queued before throwing, defaults to Infinity. */
+  maxQueuedTasks: number;
   /** The maximum number of tasks that can be active at once, defaults to 1. */
   maxConcurrentTasks: number;
   /** The maximum number of completed tasks that should be saved for diagnostic purposes, defaults to 100. */
@@ -115,6 +117,7 @@ export class TaskQueue<TInput, TOutput, TProgress = ProgressUpdate> extends Even
   constructor(options?: Partial<QueueOptions<TInput, TOutput, TProgress>>) {
     super();
     this._options = {
+      maxQueuedTasks: Infinity,
       maxConcurrentTasks: 1,
       maxCompletedTaskMemory: 100,
       onTask() {
@@ -133,6 +136,7 @@ export class TaskQueue<TInput, TOutput, TProgress = ProgressUpdate> extends Even
     if (this._state === QueueState.DRAINING || this._state === QueueState.DRAINED) {
       throw new Error(`Cannot enqueue tasks to drained queue`);
     }
+    this._throwIfWillExceedQueuedCapacity();
 
     const completedPromiseDecomposed = createDecomposedPromise<void>();
     const abortController = new AbortController();
@@ -245,6 +249,18 @@ export class TaskQueue<TInput, TOutput, TProgress = ProgressUpdate> extends Even
     const queuedPromises = this._tasks[TaskState.QUEUED].map((ref) => ref.completed);
     const activePromises = this._tasks[TaskState.ACTIVE].map((ref) => ref.completed);
     await Promise.all([...queuedPromises, ...activePromises]);
+  }
+
+  private _throwIfWillExceedQueuedCapacity() {
+    const {maxConcurrentTasks, maxQueuedTasks} = this._options;
+    const hasActiveCapacity = this._tasks[TaskState.ACTIVE].length < maxConcurrentTasks;
+    const activeCapacity = this._state === QueueState.RUNNING && hasActiveCapacity ? 1 : 0;
+    const nextQueueLength = this._tasks[TaskState.QUEUED].length + 1;
+    const nextQueueCapacity = activeCapacity + maxQueuedTasks;
+    console.log({hasActiveCapacity, activeCapacity, nextQueueLength, maxQueuedTasks});
+    if (nextQueueLength > nextQueueCapacity) {
+      throw new Error(`Queue has exceeded max queued tasks (${maxQueuedTasks})`);
+    }
   }
 
   private _startNextIfPossible() {

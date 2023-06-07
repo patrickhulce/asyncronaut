@@ -271,6 +271,5 @@ Thank you for your interest in contributing to Asyncronaut! Please feel free to 
   - renderPipeline
   - test helpers
 - taskQueue
-  - maxQueuedTasks
   - maxQueuedTaskDuration
   - postMessage / distributed support
