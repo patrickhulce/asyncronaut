@@ -43,7 +43,7 @@ export interface PromiseTimeoutOptions<T> {
   cleanupOnLateReject?(error: Error): void;
 }
 
-/** Creates the a promise with resolve and reject methods exposed. */
+/** Creates a promise with resolve and reject methods exposed. */
 export function createDecomposedPromise<T>(): DecomposedPromise<T> {
   /* eslint-disable @typescript-eslint/no-unused-vars */
   let resolve = (value: T) => {};
