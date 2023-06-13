@@ -58,7 +58,7 @@ export function createDecomposedPromise<T>(): DecomposedPromise<T> {
   return {resolve, reject, promise};
 }
 
-/** Adds timeout management to an existing promise, including abortController notification, and */
+/** Adds timeout management to an existing promise, including abortController notification, and cleanup. */
 export function withTimeout<T>(
   sourcePromise: Promise<T>,
   options: PromiseTimeoutOptions<T>
