@@ -259,8 +259,6 @@ Thank you for your interest in contributing to Asyncronaut! Please feel free to 
 
 ## Roadmap
 
-- time
-  - time controller
 - promises
   - `fromEvent`
 - streams
