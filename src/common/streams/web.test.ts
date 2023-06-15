@@ -1,5 +1,10 @@
 import {Readable} from 'stream';
 import {ReadableStream, TransformStream} from 'stream/web';
+// @ts-expect-error - the types are close enough
+global.TransformStream = TransformStream;
+// @ts-expect-error - the types are close enough
+global.ReadableStream = ReadableStream;
+
 import {
   CHARACTER_SMOOTH_STREAM_OPTIONS,
   SmoothStreamOptions,

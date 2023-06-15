@@ -1,5 +1,4 @@
 import type {Readable} from 'stream';
-import {ReadableStream, TransformStream} from 'stream/web';
 import createLogger from 'debug';
 import {delay} from '../promises';
 

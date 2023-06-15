@@ -1,5 +1,5 @@
 import {Readable} from 'stream';
-import {ReadableStream} from 'stream/web';
+import type {ReadableStream} from 'stream/web';
 
 /** Converts a stream of bytes into a promise of the complete buffer. */
 export async function streamToBuffer(stream: Readable): Promise<Buffer> {
