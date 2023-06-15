@@ -257,7 +257,6 @@ export class TaskQueue<TInput, TOutput, TProgress = ProgressUpdate> extends Even
     const activeCapacity = this._state === QueueState.RUNNING && hasActiveCapacity ? 1 : 0;
     const nextQueueLength = this._tasks[TaskState.QUEUED].length + 1;
     const nextQueueCapacity = activeCapacity + maxQueuedTasks;
-    console.log({hasActiveCapacity, activeCapacity, nextQueueLength, maxQueuedTasks});
     if (nextQueueLength > nextQueueCapacity) {
       throw new Error(`Queue has exceeded max queued tasks (${maxQueuedTasks})`);
     }
