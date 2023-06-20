@@ -1,6 +1,7 @@
 import type {Readable} from 'stream';
 import createLogger from 'debug';
 import {delay} from '../promises';
+import {DEFAULT_TIME_CONTROLLER, TimeController} from '../time';
 
 const log = createLogger('asyncronaut:streams:verbose');
 
@@ -106,6 +107,8 @@ export interface SmoothStreamOptions<TState, TIncrement> {
   finalIncrementDurationMs?: number;
   /** The signal from an abort controller to stop the stream. */
   signal?: AbortSignal;
+  /** The time controller to use for detecting the duration of events during the stream. */
+  time?: TimeController;
 }
 
 class SmoothStream<TState, TIncrement> extends TransformStream<TIncrement, TIncrement> {
@@ -115,6 +118,7 @@ class SmoothStream<TState, TIncrement> extends TransformStream<TIncrement, TIncr
   private previousState: TState | undefined = undefined;
   private currentState: TState | undefined = undefined;
   private writer: WritableStreamDefaultWriter | undefined = undefined;
+  private time: TimeController;
 
   private nextIncrementTimeout: NodeJS.Timeout | undefined = undefined;
   private processedIncrements: Array<IncrementFraction<TIncrement>> = [];
@@ -123,6 +127,7 @@ class SmoothStream<TState, TIncrement> extends TransformStream<TIncrement, TIncr
   public constructor(private options: SmoothStreamOptions<TState, TIncrement>) {
     super();
     this._emitIncrement = this._emitIncrement.bind(this);
+    this.time = options.time ?? DEFAULT_TIME_CONTROLLER;
   }
 
   private _close() {
@@ -201,13 +206,13 @@ class SmoothStream<TState, TIncrement> extends TransformStream<TIncrement, TIncr
     try {
       // eslint-disable-next-line no-constant-condition
       while (true) {
-        const pollStartMs = Date.now();
+        const pollStartMs = this.time.now();
         log(`start poll`);
         const {state, isDone} = await poll(this.currentState);
         log('poll complete', {isDone});
 
         this.isDonePolling = isDone;
-        this.lastPollDuration = Date.now() - pollStartMs;
+        this.lastPollDuration = this.time.now() - pollStartMs;
 
         if (signal?.aborted) return;
 
@@ -215,7 +220,7 @@ class SmoothStream<TState, TIncrement> extends TransformStream<TIncrement, TIncr
         this._scheduleIncrements();
 
         if (isDone) break;
-        await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+        await delay(pollIntervalMs);
       }
     } catch (error) {
       writer.abort(error);
