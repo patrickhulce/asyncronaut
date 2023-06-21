@@ -12,8 +12,11 @@ export interface QueueOptions<TInput, TOutput, TProgress> {
   onTask(
     ref: Pick<TaskRef<TInput, TOutput, TProgress>, 'id' | 'request' | 'signal' | 'emit'>
   ): Promise<TOutput>;
-  /** The function to use to acquire the current UNIX timestamp. */
-  dateNow(): number;
+  /**
+   * The function to use to acquire the current UNIX timestamp.
+   * @internal
+   */
+  now(): number;
 }
 
 export interface TaskRef<TInput, TOutput, TProgress = ProgressUpdate> {
@@ -29,9 +32,9 @@ export interface TaskRef<TInput, TOutput, TProgress = ProgressUpdate> {
   request: TaskRequest<TInput>;
   /** The task's result, only set when the task has completed successfully. */
   output: TOutput | undefined;
-  /** The task failure error with which the task was rejected, only set when the task has completed unsuccessfully. */
+  /** The task failure error with which the task was rejected, only set when the task did not succeed. */
   error: TaskFailureError | undefined;
-  /** A promise representing when the task has settled (either resolved or rejected). */
+  /** A promise representing when the task has settled (either resolved or rejected). This `completed` promise will never reject. */
   completed: Promise<void>;
   /** A signal communicating the requested cancellation of this task. */
   signal: AbortSignal;
@@ -123,7 +126,7 @@ export class TaskQueue<TInput, TOutput, TProgress = ProgressUpdate> extends Even
       onTask() {
         throw new Error('`onTask` left unimplemented in TaskQueue constructor');
       },
-      dateNow: Date.now,
+      now: Date.now,
       ...options,
     };
   }
@@ -149,7 +152,7 @@ export class TaskQueue<TInput, TOutput, TProgress = ProgressUpdate> extends Even
       id: uuid(),
       state: TaskState.QUEUED,
       request: {input, ...options},
-      queuedAt: this._options.dateNow(),
+      queuedAt: this._options.now(),
       completedAt: undefined,
       output: undefined,
       error: undefined,
@@ -310,7 +313,7 @@ export class TaskQueue<TInput, TOutput, TProgress = ProgressUpdate> extends Even
 
     taskRef.state = TaskState.CANCELLED;
     taskRef.error = new TaskFailureError(taskRef, taskRef.signal.reason);
-    taskRef.completedAt = this._options.dateNow();
+    taskRef.completedAt = this._options.now();
 
     this._tasks[TaskState.QUEUED] = this._tasks[TaskState.QUEUED].filter((ref) => ref !== taskRef);
     this._tasks[TaskState.CANCELLED].push(taskRef);
@@ -327,7 +330,7 @@ export class TaskQueue<TInput, TOutput, TProgress = ProgressUpdate> extends Even
 
     taskRef.state = TaskState.SUCCEEDED;
     taskRef.output = result;
-    taskRef.completedAt = this._options.dateNow();
+    taskRef.completedAt = this._options.now();
 
     this._tasks[TaskState.ACTIVE] = this._tasks[TaskState.ACTIVE].filter((ref) => ref !== taskRef);
     this._tasks[TaskState.SUCCEEDED].push(taskRef);
@@ -344,15 +347,17 @@ export class TaskQueue<TInput, TOutput, TProgress = ProgressUpdate> extends Even
     if (taskRef.state !== TaskState.ACTIVE) return;
 
     const error = new TaskFailureError(taskRef, originalError);
-    taskRef.state = TaskState.FAILED;
+    taskRef.state = taskRef.signal.aborted ? TaskState.CANCELLED : TaskState.FAILED;
     taskRef.error = error;
-    taskRef.completedAt = this._options.dateNow();
+    taskRef.completedAt = this._options.now();
 
     this._tasks[TaskState.ACTIVE] = this._tasks[TaskState.ACTIVE].filter((ref) => ref !== taskRef);
-    this._tasks[TaskState.FAILED].push(taskRef);
+    this._tasks[taskRef.state].push(taskRef);
     this._garbageCollectCompletedTasks();
 
-    this.emit('error', error);
+    // If the task failed because it was intentionally aborted, we don't emit an error event.
+    // We only emit `error` events for tasks that outright rejected, i.e. unexpected errors.
+    if (!taskRef.signal.aborted) this.emit('error', error);
     taskRef.completedPromiseDecomposed.resolve();
   }
 }

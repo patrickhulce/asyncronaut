@@ -35,7 +35,7 @@ describe(TaskQueue, () => {
     let dateNowValue = 1_000;
     dateNowFn = jest.fn().mockImplementation(() => dateNowValue++);
     taskHandler = jest.fn();
-    taskQueue = new TaskQueue<number, string>({onTask: taskHandler, dateNow: dateNowFn});
+    taskQueue = new TaskQueue<number, string>({onTask: taskHandler, now: dateNowFn});
 
     jest.useFakeTimers();
   });
@@ -203,15 +203,16 @@ describe(TaskQueue, () => {
       await flushAllMicrotasks();
 
       expect(completedPromise).toBeDone();
-      expect(taskRef.state).toEqual(TaskState.FAILED);
+      expect(taskRef.state).toEqual(TaskState.CANCELLED);
       expect(taskRef.error).toBeInstanceOf(TaskFailureError);
       expect(taskRef.output).toBeUndefined();
+      expect(onErrorFn).not.toHaveBeenCalled();
 
       onTaskDecomposed.resolve();
       await flushAllMicrotasks();
 
       expect(completedPromise).toBeDone();
-      expect(taskRef.state).toEqual(TaskState.FAILED);
+      expect(taskRef.state).toEqual(TaskState.CANCELLED);
       expect(taskRef.error).toBeInstanceOf(TaskFailureError);
       expect(taskRef.output).toBeUndefined();
     });
@@ -232,7 +233,7 @@ describe(TaskQueue, () => {
       await flushAllMicrotasks();
 
       expect(completedPromise).toBeDone();
-      expect(taskRef.state).toEqual(TaskState.FAILED);
+      expect(taskRef.state).toEqual(TaskState.CANCELLED);
       expect(taskRef.error).toBeInstanceOf(TaskFailureError);
 
       const firstError = taskRef.error;
@@ -244,6 +245,26 @@ describe(TaskQueue, () => {
       expect(taskRef.error).toBe(firstError);
       expect(taskRef.error).toHaveProperty('reason', originalError);
       expect(taskRef.error).not.toHaveProperty('reason', rejectError);
+    });
+
+    it('fails the task when handler rejects', async () => {
+      const error = new Error('HANDLER_FAILURE');
+      taskHandler.mockRejectedValue(error);
+
+      const onErrorFn = jest.fn();
+      taskQueue.on('error', onErrorFn);
+      taskQueue.start();
+
+      const taskRef = taskQueue.enqueue(1);
+      const completedPromise = withInspection(taskRef.completed);
+
+      await flushAllMicrotasks();
+
+      expect(completedPromise).toBeDone();
+      expect(taskRef.state).toEqual(TaskState.FAILED);
+      expect(taskRef.error).toBeInstanceOf(TaskFailureError);
+      expect(taskRef.error?.reason).toBe(error);
+      expect(onErrorFn).toHaveBeenCalledWith(taskRef.error);
     });
 
     describe('maxQueuedTasks', () => {
@@ -294,7 +315,7 @@ describe(TaskQueue, () => {
       expect(taskHandler).toHaveBeenCalledTimes(3);
     });
 
-    it('fails the task when passed signal aborts', async () => {
+    it('cancels the task when passed signal aborts', async () => {
       taskHandler.mockResolvedValue('');
       const onErrorFn = jest.fn();
       taskQueue.on('error', onErrorFn);
@@ -306,12 +327,12 @@ describe(TaskQueue, () => {
       abortController.abort();
       await flushAllMicrotasks();
 
-      expect(taskRef.state).toEqual(TaskState.FAILED);
+      expect(taskRef.state).toEqual(TaskState.CANCELLED);
       expect(taskRef.error).toBeInstanceOf(TaskFailureError);
-      expect(onErrorFn).toHaveBeenCalled();
+      expect(onErrorFn).not.toHaveBeenCalled();
     });
 
-    it('fails the task when returned abortController is aborted', async () => {
+    it('cancels the task when returned abortController is aborted', async () => {
       taskHandler.mockResolvedValue('');
       const onErrorFn = jest.fn();
       taskQueue.on('error', onErrorFn);
@@ -321,15 +342,16 @@ describe(TaskQueue, () => {
       taskRef.abort();
       await flushAllMicrotasks();
 
-      expect(taskRef.state).toEqual(TaskState.FAILED);
+      expect(taskRef.state).toEqual(TaskState.CANCELLED);
       expect(taskRef.error).toBeInstanceOf(TaskFailureError);
+      expect(onErrorFn).not.toHaveBeenCalled();
     });
 
     it('throws when called on drained queue', async () => {
       taskHandler.mockResolvedValue('success');
 
       await taskQueue.drain();
-      expect(() => taskQueue.pause()).toThrow();
+      expect(() => taskQueue.start()).toThrow();
     });
   });
 
@@ -404,12 +426,12 @@ describe(TaskQueue, () => {
 
       await flushAllMicrotasks();
 
-      expect(taskRef1.state).toEqual(TaskState.FAILED);
+      expect(taskRef1.state).toEqual(TaskState.CANCELLED);
       expect(taskRef2.state).toEqual(TaskState.CANCELLED);
       expect(completedPromise1).toBeDone();
       expect(completedPromise2).toBeDone();
       expect(drainPromise).toBeDone();
-      expect(onErrorFn).toHaveBeenCalledTimes(1);
+      expect(onErrorFn).toHaveBeenCalledTimes(0);
     });
 
     it('aborts active tasks', async () => {
@@ -435,7 +457,7 @@ describe(TaskQueue, () => {
 
       expect(drainPromise).toBeDone();
       expect(signalPromise).toBeDone();
-      expect(taskRef.state).toEqual(TaskState.FAILED);
+      expect(taskRef.state).toEqual(TaskState.CANCELLED);
     });
   });
 
@@ -522,7 +544,7 @@ describe(TaskQueue, () => {
       taskQueue = new TaskQueue({
         maxCompletedTaskMemory: 30,
         onTask: taskHandler,
-        dateNow: dateNowFn,
+        now: dateNowFn,
       });
       taskQueue.on('error', jest.fn());
       taskQueue.start();
