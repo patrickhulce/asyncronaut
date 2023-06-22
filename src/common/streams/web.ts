@@ -188,7 +188,7 @@ class SmoothStream<TState, TIncrement> extends TransformStream<TIncrement, TIncr
     const targetIncrements = Math.ceil(totalDurationMs / minimumIncrementDurationMs);
     this.incrementsToProcess = getSubIncrements(increment, targetIncrements);
     this.iterationDurationMs = Math.ceil(totalDurationMs / this.incrementsToProcess.length);
-    log(`calculated ${this.incrementsToProcess} increments to process`);
+    log(`calculated ${this.incrementsToProcess.length} increments to process`);
   }
 
   async start() {
