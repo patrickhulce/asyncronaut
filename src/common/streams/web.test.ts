@@ -166,6 +166,16 @@ describe(createSmoothStreamViaPoll, () => {
     }
   };
 
+  async function readUntilDone(reader: ReadableStreamDefaultReader<string>): Promise<string[]> {
+    const chunks: string[] = [];
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const result = await reader.read();
+      if (result.done) return Promise.resolve(chunks);
+      chunks.push(result.value);
+    }
+  }
+
   beforeEach(() => {
     jest.useFakeTimers();
     Date.now = jest.fn().mockReturnValue(1_000_000);
@@ -387,5 +397,38 @@ describe(createSmoothStreamViaPoll, () => {
     await flushAllMicrotasks();
     expect(chunkPromise).toBeDone();
     expect(chunks.join('')).toEqual('ABCDEFGH');
+  });
+
+  it('flushes all queued increments on drain', async () => {
+    const pollFn = jest.fn().mockResolvedValueOnce({state: 'ABCD', isDone: false});
+
+    const stream = createStream({
+      poll: pollFn,
+      pollIntervalMs: 10_000,
+      excessIncrementDurationMs: 0,
+    });
+    const reader = await stream.getReader();
+
+    // Schedules first character immediately.
+    const firstReadPromise = withInspection(reader.read());
+    await flushAllMicrotasks();
+    expect(firstReadPromise).toBeDone();
+    expect(await firstReadPromise).toEqual({value: 'A', done: false});
+
+    // Cancel the stream before any other characters are written.
+    jest.advanceTimersByTime(250);
+    const readPromise = withInspection(readUntilDone(reader));
+
+    await stream.drain();
+
+    // Ensure we closed the stream gracefully.
+    await flushAllMicrotasks();
+    expect(readPromise).toBeDone();
+
+    // Ensure we got the rest of the characters.
+    expect(await readPromise).toEqual(['B', 'C', 'D']);
+
+    await reader.releaseLock();
+    await stream.cancel();
   });
 });

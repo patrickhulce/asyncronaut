@@ -133,9 +133,11 @@ class SmoothStream<TState, TIncrement> extends TransformStream<TIncrement, TIncr
   private _close() {
     if (!this.writer) return;
     log('closing writer');
-    this.writer.close().catch((error) => {
-      log('closing writer failed', error);
-    });
+    this.writer.close().catch(this._logError);
+  }
+
+  private _logError(error: unknown) {
+    log(`error in smooth stream`, error);
   }
 
   private _emitIncrement() {
@@ -150,7 +152,7 @@ class SmoothStream<TState, TIncrement> extends TransformStream<TIncrement, TIncr
       return;
     }
 
-    this.writer.write(incrementFraction.increment);
+    this.writer.write(incrementFraction.increment).catch(this._logError);
     this.processedIncrements.push(incrementFraction);
 
     if (!this.incrementsToProcess.length && this.isDonePolling) return this._close();
@@ -194,14 +196,10 @@ class SmoothStream<TState, TIncrement> extends TransformStream<TIncrement, TIncr
   async start() {
     if (this.writer) throw new Error(`SmoothStream already started`);
     const writer = (this.writer = await this.writable.getWriter());
+    await this.writer.ready;
 
     const {signal, poll, pollIntervalMs = 1000} = this.options;
-    if (signal) {
-      signal.addEventListener('abort', () => {
-        for (const {increment} of this.incrementsToProcess) writer.write(increment);
-        writer.close();
-      });
-    }
+    if (signal) signal.addEventListener('abort', () => this.drain());
 
     try {
       // eslint-disable-next-line no-constant-condition
@@ -226,18 +224,28 @@ class SmoothStream<TState, TIncrement> extends TransformStream<TIncrement, TIncr
       writer.abort(error);
     }
   }
+
+  async drain() {
+    const writer = this.writer;
+    if (!writer) throw new Error(`SmoothStream not yet started`);
+
+    for (const {increment} of this.incrementsToProcess) {
+      writer.write(increment).catch(this._logError);
+    }
+    writer.close().catch(this._logError);
+  }
 }
 
 /** Converts a poll-based state fetcher into a continuous stream of smaller increments. */
 export function createSmoothStreamViaPoll<TState, TIncrement>(
   options: SmoothStreamOptions<TState, TIncrement>
-): ReadableStream<TIncrement> {
-  const smoothStream = new SmoothStream(options);
-  smoothStream.start().catch((error) => {
+): ReadableStream<TIncrement> & {drain: () => Promise<void>} {
+  const stream = new SmoothStream(options);
+  stream.start().catch((error) => {
     log('smooth stream start failed', error);
-    smoothStream.writable.abort(error);
+    stream.writable.abort(error);
   });
-  return smoothStream.readable;
+  return Object.assign(stream.readable, {drain: () => stream.drain()});
 }
 
 export const CHARACTER_SMOOTH_STREAM_OPTIONS: Pick<
