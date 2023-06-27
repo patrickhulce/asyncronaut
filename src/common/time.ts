@@ -44,6 +44,8 @@ export interface DefaultTimerOptions {
   maxConcurrentSpans?: number;
   /** The maximum number of historical entries to hold in memory before evicting the oldest. Invoke `.takeEntries()` regularly to process timing. Defaults to 1000. */
   maxEntryHistory?: number;
+  /** The function used to log start and end events. */
+  log?: (entry: {label: string; id?: string; context?: string; event: 'start' | 'end'}) => void;
   /** The object used to determine the current time. */
   time?: TimeController;
 }
@@ -58,12 +60,23 @@ export class DefaultTimer implements Timer {
       maxConcurrentSpans: 500,
       maxEntryHistory: 1000,
       time: DEFAULT_TIME_CONTROLLER,
+      log: (entry) =>
+        log(
+          `${entry?.context || 'timer'} ${entry.event} ${DefaultTimer._labelWithId(entry.label, {
+            id: entry.id,
+          })}`
+        ),
       ...options,
     };
   }
 
   private static _key(label: string, options?: TimerEntryOptions) {
     return `${options?.context || 'default'}@@@${label}@@@${options?.id || ''}`;
+  }
+
+  private static _labelWithId(label: string, options?: TimerEntryOptions) {
+    if (!options?.id) return label;
+    return `${label} (${options.id})`;
   }
 
   _runGarbageCollection() {
@@ -83,16 +96,10 @@ export class DefaultTimer implements Timer {
     }
   }
 
-  private static _labelWithId(label: string, options?: TimerEntryOptions) {
-    if (!options?.id) return label;
-    return `${label} (${options.id})`;
-  }
-
   start(label: string, options?: TimerEntryOptions): void {
     const key = DefaultTimer._key(label, options);
     this._entriesByKey.set(key, {label, start: this._options.time.now(), ...options});
     this._runGarbageCollection();
-    log(`${options?.context || 'timer'} started ${DefaultTimer._labelWithId(label, options)}`);
   }
 
   end(label: string, options?: TimerEntryOptions): void {
@@ -109,6 +116,11 @@ export class DefaultTimer implements Timer {
   _addEntry(entry: TimerEntry): void {
     this._pastEntries.push(entry);
     this._runGarbageCollection();
+  }
+
+  withUniqueId(): Timer {
+    const id = Math.round(Math.random() ** 32).toString(16);
+    return this.withId(id);
   }
 
   withId(id: string): Timer {
