@@ -36,6 +36,7 @@ export interface Timer {
   end(label: string, options?: TimerEntryOptions): void;
   withContext(context: string): Timer;
   withId(context: string): Timer;
+  withUniqueId(): Timer;
   takeEntries(): TimerEntry[];
 }
 
@@ -152,6 +153,7 @@ export class DefaultTimer implements Timer {
     return {
       start: (label, options) => this.start(label, {...options, id}),
       end: (label, options) => this.end(label, {...options, id}),
+      withUniqueId: () => this.withUniqueId(),
       withId: (id) => this.withId(id),
       withContext: (context) => this.withContext(context),
       takeEntries: () => this.takeEntries(),
@@ -162,6 +164,7 @@ export class DefaultTimer implements Timer {
     return {
       start: (label, options) => this.start(label, {...options, context}),
       end: (label, options) => this.end(label, {...options, context}),
+      withUniqueId: () => this.withUniqueId(),
       withId: (id) => this.withId(id),
       withContext: (context) => this.withContext(context),
       takeEntries: () => this.takeEntries(),
