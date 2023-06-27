@@ -44,8 +44,17 @@ export interface DefaultTimerOptions {
   maxConcurrentSpans?: number;
   /** The maximum number of historical entries to hold in memory before evicting the oldest. Invoke `.takeEntries()` regularly to process timing. Defaults to 1000. */
   maxEntryHistory?: number;
+  /** The default options to use for each timer entry. */
+  defaultOptions?: TimerEntryOptions;
   /** The function used to log start and end events. */
-  log?: (entry: {label: string; id?: string; context?: string; event: 'start' | 'end'}) => void;
+  log?: (entry: {
+    label: string;
+    id?: string;
+    context?: string;
+    event: 'start' | 'end';
+    timestamp: number;
+    duration?: number;
+  }) => void;
   /** The object used to determine the current time. */
   time?: TimeController;
 }
@@ -60,6 +69,7 @@ export class DefaultTimer implements Timer {
       maxConcurrentSpans: 500,
       maxEntryHistory: 1000,
       time: DEFAULT_TIME_CONTROLLER,
+      defaultOptions: {},
       log: (entry) =>
         log(
           `${entry?.context || 'timer'} ${entry.event} ${DefaultTimer._labelWithId(entry.label, {
@@ -97,20 +107,33 @@ export class DefaultTimer implements Timer {
   }
 
   start(label: string, options?: TimerEntryOptions): void {
+    options = {...this._options.defaultOptions, ...options};
+
+    const timestamp = this._options.time.now();
     const key = DefaultTimer._key(label, options);
-    this._entriesByKey.set(key, {label, start: this._options.time.now(), ...options});
+    this._entriesByKey.set(key, {label, start: timestamp, ...options});
     this._runGarbageCollection();
+
+    this._options.log({label, event: 'start', timestamp, ...options});
   }
 
   end(label: string, options?: TimerEntryOptions): void {
-    log(`${options?.context || 'timer'} ended ${DefaultTimer._labelWithId(label, options)}`);
+    options = {...this._options.defaultOptions, ...options};
+
     const key = DefaultTimer._key(label, options);
     const entry = this._entriesByKey.get(key);
-    if (!entry) return;
 
-    entry.end = this._options.time.now();
-    this._entriesByKey.delete(key);
-    this._addEntry(entry);
+    const timestamp = this._options.time.now();
+    let duration: number | undefined = undefined;
+
+    if (entry) {
+      entry.end = timestamp;
+      this._entriesByKey.delete(key);
+      this._addEntry(entry);
+      duration = entry.end - entry.start;
+    }
+
+    this._options.log({label, event: 'end', timestamp, duration, ...options});
   }
 
   _addEntry(entry: TimerEntry): void {
@@ -119,7 +142,9 @@ export class DefaultTimer implements Timer {
   }
 
   withUniqueId(): Timer {
-    const id = Math.round(Math.random() ** 32).toString(16);
+    const id = Math.round(Math.random() ** 32)
+      .toString(16)
+      .padStart(8, '0');
     return this.withId(id);
   }
 

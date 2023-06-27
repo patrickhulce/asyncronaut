@@ -111,4 +111,57 @@ describe('RootTimer()', () => {
 
     expect(timer.takeEntries().length).toBeLessThan(10_000);
   });
+
+  it('generates unique identifiers', () => {
+    const timer = new DefaultTimer({time: JEST_TIME_CONTROLLER});
+
+    for (let i = 0; i < 10_000; i++) {
+      const subtimer = timer.withUniqueId();
+      subtimer.start('example');
+      subtimer.end('example');
+      expect(subtimer.takeEntries()[0].id).toMatch(/^[a-f0-9]{8}$/);
+    }
+  });
+
+  it('uses default options', () => {
+    const timer = new DefaultTimer({
+      time: JEST_TIME_CONTROLLER,
+      defaultOptions: {context: 'example', id: '1234'},
+    });
+
+    timer.start('example', {context: 'other'});
+    timer.start('example', {id: '123'});
+    timer.end('example', {context: 'other'});
+    timer.end('example', {id: '123'});
+
+    expect(timer.takeEntries()).toMatchObject([
+      {label: 'example', context: 'other', id: '1234'},
+      {label: 'example', context: 'example', id: '123'},
+    ]);
+  });
+
+  it('notifies loggers', () => {
+    const log = jest.fn();
+    const timer = new DefaultTimer({time: JEST_TIME_CONTROLLER, log});
+
+    JEST_TIME_CONTROLLER.now.mockReturnValueOnce(1000);
+    timer.start('example', {id: '123'});
+    JEST_TIME_CONTROLLER.now.mockReturnValueOnce(2000);
+    timer.end('example', {id: '123'});
+
+    expect(log).toHaveBeenCalledWith({
+      label: 'example',
+      id: '123',
+      event: 'start',
+      timestamp: 1000,
+    });
+
+    expect(log).toHaveBeenCalledWith({
+      label: 'example',
+      id: '123',
+      event: 'end',
+      timestamp: 2000,
+      duration: 1000,
+    });
+  });
 });
