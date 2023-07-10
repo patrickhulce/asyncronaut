@@ -114,13 +114,18 @@ describe('RootTimer()', () => {
 
   it('generates unique identifiers', () => {
     const timer = new DefaultTimer({time: JEST_TIME_CONTROLLER});
+    const uniqueEntries = new Set<string | undefined>();
 
     for (let i = 0; i < 10_000; i++) {
       const subtimer = timer.withUniqueId();
       subtimer.start('example');
       subtimer.end('example');
-      expect(subtimer.takeEntries()[0].id).toMatch(/^[a-f0-9]{8}$/);
+      const id = subtimer.takeEntries()[0].id;
+      expect(id).toMatch(/^[a-f0-9]{8}$/);
+      uniqueEntries.add(id);
     }
+
+    expect(uniqueEntries.size).toBeGreaterThan(2);
   });
 
   it('uses default options', () => {
